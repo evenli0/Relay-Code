@@ -77,3 +77,38 @@ export interface Resource {
 
 /** 最大 ReAct 循环轮数 */
 export const MAX_REACT_ITERATIONS = 20
+
+// ---- SubAgent / Harness 类型 ----
+
+/** Dispatch 配置（编排Agent传给dispatch工具的完整参数） */
+export interface DispatchConfig {
+  preload?: string[]
+  prompt: {
+    role?: string
+    constraints?: string[]
+    task: string
+    anything_else?: string
+  }
+  allowed_tools?: string[]
+}
+
+/** 子Agent执行过程的每一步 */
+export interface ProcessStep {
+  step: number
+  type: "llm_call" | "tool_call" | "tool_result" | "interception" | "final"
+  content: string
+  tool_name?: string
+  tool_args?: string
+}
+
+/** 子Agent完整回执 */
+export interface SubAgentResult {
+  status: "completed" | "error"
+  output: string
+  process: ProcessStep[]
+}
+
+/** 编排Agent的固定ID */
+export const ORCHESTRATOR_ID = "orchestrator"
+/** 编排Agent默认权限（全部工具） */
+export const ORCHESTRATOR_PERMISSIONS = ["read", "write", "grep", "bash", "dispatch"]

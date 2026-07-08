@@ -41,10 +41,10 @@ test("LLM直接返回文本 → 一轮循环结束", async () => {
 })
 
 // -----------------------------------------------
-// Test 2：调工具 → 结果放回 → 再调 → 返回文本
-// -----------------------------------------------
+// Test 2：调 dispatch → 子Agent执行 → 结果放回 → 再调 → 返回文本
+// 注：dispatch 参数格式已从 {recipient, prompt} 改为 {prompt: {task}}
 test("dispatch工具调用 → 结果放回 → 再调LLM → 返回文本", async () => {
-  // 第1次：编排Agent调LLM → 返回 dispatch 工具调用
+  // 第1次：编排Agent调LLM → 返回 dispatch 工具调用（新版schema）
   responseQueue.push({
     content: null,
     tool_calls: [
@@ -54,14 +54,13 @@ test("dispatch工具调用 → 结果放回 → 再调LLM → 返回文本", asy
         function: {
           name: "dispatch",
           arguments: JSON.stringify({
-            recipient: "代码Agent",
-            prompt: "写一个hello world脚本",
+            prompt: { task: "写一个hello world脚本" },
           }),
         },
       },
     ],
   })
-  // 第2次：dispatch 内部调 LLM → 返回结果
+  // 第2次：dispatch → harness 创建子Agent → 子Agent调LLM → 返回结果
   responseQueue.push({ content: "已创建 hello world 脚本", tool_calls: undefined })
   // 第3次：编排Agent看到结果后继续 → 返回最终文本
   responseQueue.push({ content: "完成。已创建 hello world 脚本", tool_calls: undefined })
@@ -71,13 +70,14 @@ test("dispatch工具调用 → 结果放回 → 再调LLM → 返回文本", asy
 
   expect(result).toBe("完成。已创建 hello world 脚本")
 
-  // 验证：编排Agent收到了dispatch的结果
+  // 验证：编排Agent收到了dispatch的完整回执
   const allCalls = mockCallLLM.mock.calls
-  // 找到编排Agent最后一次调用（第三个请求），确认它看到了 tool 角色的消息
   const finalCallMessages = allCalls[allCalls.length - 1]?.[0] as ChatMessage[]
   const toolMessage = finalCallMessages.find((m) => m.role === "tool")
   expect(toolMessage).toBeDefined()
-  expect(toolMessage!.content).toBe("已创建 hello world 脚本")
+  // dispatch 回执经过 Harness 包装
+  expect(toolMessage!.content).toContain("[dispatch 完成]")
+  expect(toolMessage!.content).toContain("已创建 hello world 脚本")
 })
 
 // -----------------------------------------------

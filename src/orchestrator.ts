@@ -1,21 +1,25 @@
 import type { ChatMessage, Resource } from "./types"
-import { MAX_REACT_ITERATIONS } from "./types"
+import { MAX_REACT_ITERATIONS, ORCHESTRATOR_ID, ORCHESTRATOR_PERMISSIONS } from "./types"
 import { callLLM } from "./llm"
-import { ORCHESTRATOR_TOOLS, executeTool } from "./tools"
+import { ALL_TOOLS } from "./tools"
+import { Harness } from "./harness"
 import { buildSystemPrompt } from "./prompts"
 
 /**
  * 编排Agent —— 拥有 ReAct 循环的角色
  *
- * 工作原理：
- *   1. 接收用户指令 + 当前资源清单
- *   2. 进入 ReAct 循环：调LLM(带全部工具) → 执行工具 → 继续调 → 直到返回文本
- *   3. 输出最终答案
- *
- * 编排Agent有全部工具权限。dispatch 只是工具之一。
- * 系统提示中的定价信息和实验结论会引导它的决策，但不限制它的选择。
+ * 所有工具调用经过 Harness 层。
+ * 编排Agent有全部工具权限（ORCHESTRATOR_PERMISSIONS），
+ * dispatch 只是工具之一。
  */
 export class Orchestrator {
+  private harness: Harness
+
+  constructor(harness?: Harness) {
+    this.harness = harness ?? new Harness()
+    this.harness.registerAgent(ORCHESTRATOR_ID, ORCHESTRATOR_PERMISSIONS)
+  }
+
   async runReAct(
     userInput: string,
     resources: Resource[] = [],
@@ -26,14 +30,12 @@ export class Orchestrator {
     ]
 
     for (let i = 0; i < MAX_REACT_ITERATIONS; i++) {
-      const response = await callLLM(messages, ORCHESTRATOR_TOOLS)
+      const response = await callLLM(messages, ALL_TOOLS)
 
-      // LLM 返回了最终文本 → 退出循环
       if (!response.tool_calls || response.tool_calls.length === 0) {
         return response.content ?? ""
       }
 
-      // LLM 调用了工具 → 逐个执行，结果放回 messages
       for (const toolCall of response.tool_calls) {
         let args: Record<string, unknown> = {}
         try {
@@ -42,7 +44,12 @@ export class Orchestrator {
           args = {}
         }
 
-        const result = await executeTool(toolCall.function.name, args)
+        // 经过 Harness 执行（权限检查 + dispatch工厂）
+        const result = await this.harness.executeToolCall(
+          ORCHESTRATOR_ID,
+          toolCall.function.name,
+          args,
+        )
 
         messages.push({
           role: "assistant",
@@ -55,10 +62,8 @@ export class Orchestrator {
           tool_call_id: toolCall.id,
         })
       }
-      // 继续下一轮 ReAct 循环
     }
 
-    // 超出最大轮数，返回当前对话摘要
     return "任务未在限定轮次内完成，请尝试简化指令后重试。"
   }
 }
