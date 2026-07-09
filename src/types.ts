@@ -69,7 +69,8 @@ export type ChatMessage =
 /** 资源清单中的一条 */
 export interface Resource {
   name: string
-  type: "carriage" | "sub-agent"
+  path?: string
+  type: "memory" | "asset"
   cached: boolean
   pricePer1K: number
   description: string

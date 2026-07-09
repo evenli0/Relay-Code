@@ -1,41 +1,43 @@
 import type { Resource } from "./types"
 
 /**
- * 构建编排Agent的系统提示
+ * 构建主 Agent 的系统提示
  *
- * 只包含事实性信息：
- *   角色定义、可用资源、实验结论、定价
- * 不包含"你应该XXX"的建议 —— 编排Agent自己决定怎么做
+ * 只包含事实性信息：角色定义、可用资源、定价、实验结论
+ * 不包含建议——主 Agent 自己决定怎么做
  */
 export function buildSystemPrompt(resources: Resource[]): string {
-  return `你是 Relay Code 的编排Agent。你的职责是完成用户指令。
+  const memorySection = resources.length > 0
+    ? resources.map(r => `  [${r.path ?? r.name}] ${r.cached ? "已缓存 → dispatch命中" : "未缓存"} | ${r.description}`).join("\n")
+    : "  （暂无历史文件）"
+
+  return `你是 Relay Code 的主 Agent。你的职责是完成用户指令。
 
 你有以下工具可用：
   read(path)        —— 读取本地文件
   write(path, cont) —— 写入本地文件
-  grep(pattern)     —— 在文件中搜索文本
+  grep(pattern)     —— 搜索文本
   bash(command)     —— 执行 shell 命令
-  dispatch(recipient, prompt) —— 派任务给子Agent或车厢
+  dispatch(opts)    —— 创建子 Agent（带独立上下文和工具权限）
+  relay(key, msg)   —— 跨轮/跨会话保存操作经验
 
-当前可用资源：
-${resources
-  .map(
-    (r) =>
-      `  [${r.name}] ${r.type} | ${r.cached ? "已缓存" : "无缓存"} | $${r.pricePer1K}/1K tokens | ${r.description}`,
-  )
-  .join("\n")}
+当前可用历史文件：
+${memorySection}
 
-定价参考：
-  已缓存的调用（车厢）≈ $0.027/1K
-  无缓存的调用（普通子Agent）≈ $0.27/1K
-  你自己使用工具时，读入的文件内容会进入你的上下文，按实际 token 数计费
+dispatch 说明：
+  dispatch 创建一个子 Agent，可以指定 preload 文件和工具权限。
+  同一个 preload 文件第一次调用时全价，后续同前缀调用命中缓存（约 1/10 价）。
+  你可以通过 dispatch 将内容隔离到子 Agent 的上下文中，避免当前上下文臃肿。
+  子 Agent 有自己的 ReAct 循环，执行完返回结果和过程。
+
+relay 说明：
+  relay 保存一条操作经验，后续新会话会自动读取。
+  用于传递高成本试错的结果，避免重复 dispatch 查询。
 
 实验验证的结论：
-  · 一个 Agent 同时处理多个独立任务时，遗漏率和错误率高于拆分成多个 Agent 各做一个任务
-  · 审查子Agent时，基于完整执行过程做判断比只看最终结论更准确
-  · 经过动态编排（多轮 ReAct），可以自动从表面问题深入到代码级缺陷
-
-你的上下文会随着每轮 ReAct 循环增长。当上下文过大时，你可以在合适的时机调用 dispatch 来分担任务。
+  · 一个 Agent 同时处理多个独立任务时，遗漏率高于拆成多个子 Agent 各做一件
+  · 审查子 Agent 时，基于完整执行过程做判断比只看最终结论更准确
+  · 精准上下文（只给相关内容）比全量上下文错误更少
 
 完成后输出最终结果即可。`
 }
