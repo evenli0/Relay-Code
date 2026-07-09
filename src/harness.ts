@@ -136,31 +136,25 @@ export class SubAgent {
         }
       }
 
-      // 执行每个工具调用
-      for (const toolCall of response.tool_calls) {
+      // 解析参数
+      const parsed = response.tool_calls.map((tc) => {
         let args: Record<string, unknown> = {}
-        try {
-          args = JSON.parse(toolCall.function.arguments)
-        } catch {
-          args = {}
-        }
+        try { args = JSON.parse(tc.function.arguments) } catch { args = {} }
+        return { tc, args }
+      })
 
-        const result = await this.harness.executeToolCall(
-          toolCall.function.name,
-          args,
-        )
+      // 并行执行所有工具调用
+      const results = await Promise.all(
+        parsed.map(({ tc, args }) =>
+          this.harness.executeToolCall(tc.function.name, args),
+        ),
+      )
 
-        this.messages.push({
-          role: "assistant",
-          content: null,
-          tool_calls: [toolCall],
-        })
-        this.messages.push({
-          role: "tool",
-          content: result,
-          tool_call_id: toolCall.id,
-        })
-      }
+      // 按顺序放回消息列表
+      parsed.forEach(({ tc }, i) => {
+        this.messages.push({ role: "assistant", content: null, tool_calls: [tc] })
+        this.messages.push({ role: "tool", content: results[i]!, tool_call_id: tc.id })
+      })
     }
 
     return {
