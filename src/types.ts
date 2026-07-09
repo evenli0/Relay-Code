@@ -51,6 +51,12 @@ export interface DispatchConfig {
   allowed_tools?: string[]
   /** 可选：指定子Agent输出的JSON结构。子Agent会自动按此格式返回 */
   responseSchema?: Record<string, unknown>
+  /** 可选：计划上下文。告诉子Agent它在整体任务中的位置 */
+  plan?: {
+    goal?: string       // 总体目标
+    steps?: string[]    // 所有步骤
+    currentStep?: string // 当前这一步
+  }
 }
 
 /** 子Agent完整回执 */

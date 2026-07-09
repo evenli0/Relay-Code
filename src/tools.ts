@@ -140,6 +140,15 @@ const dispatchTool: ToolDefinition = {
           type: "object",
           description: "可选。指定子Agent输出的JSON结构（JSON Schema格式）。子Agent会按此结构返回，主Agent可直接解析字段。",
         },
+        plan: {
+          type: "object",
+          description: "可选。计划上下文，告诉子Agent它在整体任务中的位置。",
+          properties: {
+            goal: { type: "string", description: "总体目标" },
+            steps: { type: "array", items: { type: "string" }, description: "所有步骤" },
+            currentStep: { type: "string", description: "当前这一步" },
+          },
+        },
       },
     },
   },

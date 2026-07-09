@@ -78,6 +78,16 @@ export class Harness {
       prompt += `\n最终结果格式要求（严格 JSON，不要包含 markdown 代码块或额外文本，只输出纯 JSON）：\n${JSON.stringify(config.responseSchema, null, 2)}\n`
     }
 
+    // 如果指定了 plan，告诉子Agent它在整体任务中的位置
+    if (config.plan) {
+      prompt += `\n[计划上下文]\n`
+      if (config.plan.goal) prompt += `总体目标：${config.plan.goal}\n`
+      if (config.plan.currentStep) prompt += `当前步骤：${config.plan.currentStep}\n`
+      if (config.plan.steps && config.plan.steps.length > 0) {
+        prompt += `完整步骤：\n` + config.plan.steps.map((s, i) => `  ${i + 1}. ${s}`).join("\n") + "\n"
+      }
+    }
+
     messages.push({ role: "user", content: prompt })
     return messages
   }

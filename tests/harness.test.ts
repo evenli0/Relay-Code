@@ -175,6 +175,49 @@ test("responseSchema：子 Agent 返回非法 JSON → structured 为 null", asy
 })
 
 // =============================================
+// plan 参数测试
+// =============================================
+
+test("plan 参数：有 plan 时 prompt 包含计划上下文", async () => {
+  const harness = new Harness()
+  const msgs = await harness.assembleMessages({
+    prompt: { task: "审查登录模块" },
+    plan: {
+      goal: "实现用户登录功能",
+      steps: ["编写登录模块", "审查登录模块", "修复问题"],
+      currentStep: "审查登录模块",
+    },
+  })
+
+  const content = msgs[msgs.length - 1]?.content ?? ""
+  expect(content).toContain("实现用户登录功能")
+  expect(content).toContain("审查登录模块")
+  expect(content).toContain("编写登录模块")
+  expect(content).toContain("修复问题")
+})
+
+test("plan 参数：子 Agent prompt 中能看到计划上下文", async () => {
+  responseQueue.push({
+    content: "我看到我处于审查阶段，之后还要修复问题。",
+    tool_calls: undefined,
+  })
+
+  const harness = new Harness()
+  const result = await harness.dispatch({
+    prompt: { task: "审查登录模块" },
+    plan: {
+      goal: "实现用户登录",
+      steps: ["编写", "审查", "修复"],
+      currentStep: "审查",
+    },
+  })
+
+  expect(result.status).toBe("completed")
+  expect(result.output).toContain("审查")
+  expect(result.output).toContain("修复")
+})
+
+// =============================================
 // dispatch 流程
 // =============================================
 
