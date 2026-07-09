@@ -47,6 +47,9 @@ export class Harness {
       const config = args as unknown as DispatchConfig
       if (!config.prompt?.task) return "dispatch 缺少 prompt.task"
       const result = await this.dispatch(config)
+      if (result.structured) {
+        return `[dispatch 完成]\n状态: ${result.status}\n结构化结果:\n${JSON.stringify(result.structured, null, 2)}`
+      }
       return `[dispatch 完成]\n状态: ${result.status}\n输出: ${result.output}`
     }
 
@@ -92,6 +95,11 @@ export class Harness {
       prompt += `补充：${config.prompt.anything_else}\n`
     }
 
+    // 如果指定了 responseSchema，要求子Agent按JSON格式返回
+    if (config.responseSchema) {
+      prompt += `\n最终结果格式要求（严格 JSON，不要包含 markdown 代码块或额外文本，只输出纯 JSON）：\n${JSON.stringify(config.responseSchema, null, 2)}\n`
+    }
+
     messages.push({ role: "user", content: prompt })
     return messages
   }
@@ -107,7 +115,18 @@ export class Harness {
     this.registerAgent(agentId, allowedTools)
 
     const subAgent = new SubAgent(messages, agentId, allowedTools, this)
-    return await subAgent.run()
+    const result = await subAgent.run()
+
+    // 如果指定了 responseSchema，尝试解析结构化 JSON
+    if (config.responseSchema && result.output) {
+      try {
+        result.structured = JSON.parse(result.output)
+      } catch {
+        result.structured = null
+      }
+    }
+
+    return result
   }
 }
 

@@ -136,6 +136,10 @@ const dispatchTool: ToolDefinition = {
           items: { type: "string", enum: ["read", "write", "edit", "grep", "bash"] },
           description: "子Agent可用工具白名单。不传=全部可用，传空数组=只能LLM不能调工具。",
         },
+        responseSchema: {
+          type: "object",
+          description: "可选。指定子Agent输出的JSON结构（JSON Schema格式）。子Agent会按此结构返回，主Agent可直接解析字段。",
+        },
       },
     },
   },

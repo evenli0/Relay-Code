@@ -91,6 +91,8 @@ export interface DispatchConfig {
     anything_else?: string
   }
   allowed_tools?: string[]
+  /** 可选：指定子Agent输出的JSON结构。子Agent会自动按此格式返回 */
+  responseSchema?: Record<string, unknown>
 }
 
 /** 子Agent执行过程的每一步 */
@@ -106,6 +108,8 @@ export interface ProcessStep {
 export interface SubAgentResult {
   status: "completed" | "error"
   output: string
+  /** 如果 dispatch 指定了 responseSchema，此处为解析后的结构化数据，否则为 null */
+  structured?: Record<string, unknown> | null
   process: ProcessStep[]
 }
 
