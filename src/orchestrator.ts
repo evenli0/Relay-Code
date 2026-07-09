@@ -1,31 +1,25 @@
-import type { ChatMessage, Resource } from "./types"
-import { MAX_REACT_ITERATIONS, ORCHESTRATOR_ID, ORCHESTRATOR_PERMISSIONS } from "./types"
+import type { ChatMessage } from "./types"
+import { MAX_REACT_ITERATIONS } from "./types"
 import { callLLM } from "./llm"
 import { ALL_TOOLS } from "./tools"
 import { Harness } from "./harness"
 import { buildSystemPrompt } from "./prompts"
 
 /**
- * 编排Agent —— 拥有 ReAct 循环的角色
+ * 主 Agent —— ReAct 循环
  *
  * 所有工具调用经过 Harness 层。
- * 编排Agent有全部工具权限（ORCHESTRATOR_PERMISSIONS），
- * dispatch 只是工具之一。
  */
 export class Orchestrator {
   private harness: Harness
 
   constructor(harness?: Harness) {
     this.harness = harness ?? new Harness()
-    this.harness.registerAgent(ORCHESTRATOR_ID, ORCHESTRATOR_PERMISSIONS)
   }
 
-  async runReAct(
-    userInput: string,
-    resources: Resource[] = [],
-  ): Promise<string> {
+  async runReAct(userInput: string): Promise<string> {
     const messages: ChatMessage[] = [
-      { role: "system", content: buildSystemPrompt(resources) },
+      { role: "system", content: buildSystemPrompt() },
       { role: "user", content: userInput },
     ]
 
@@ -44,9 +38,7 @@ export class Orchestrator {
           args = {}
         }
 
-        // 经过 Harness 执行（权限检查 + dispatch工厂）
         const result = await this.harness.executeToolCall(
-          ORCHESTRATOR_ID,
           toolCall.function.name,
           args,
         )

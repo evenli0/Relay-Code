@@ -1,35 +1,3 @@
-/** Agent ID，全局唯一 */
-export type AgentId = string
-
-/** 子Agent状态 */
-export type AgentStatus = "pending" | "running" | "completed" | "error"
-
-/** dispatch 参数 */
-export interface DispatchOpts {
-  recipient: AgentId
-  prompt: string
-  allowed_tools?: string[]
-}
-
-/** 子Agent执行结果 */
-export interface AgentResult {
-  agent_id: AgentId
-  status: AgentStatus
-  output: string
-  process: string
-}
-
-/** Agent 注册记录 */
-export interface AgentRecord {
-  id: AgentId
-  parent_id: AgentId | null
-  status: AgentStatus
-  task: string
-  result: AgentResult | null
-  depth: number
-  created_at: Date
-}
-
 // ---- Tool Calling 类型 ----
 
 /** LLM 调用返回（支持 tool calling） */
@@ -66,16 +34,6 @@ export type ChatMessage =
   | { role: "assistant"; content: string | null; tool_calls?: ToolCall[] }
   | { role: "tool"; content: string; tool_call_id: string }
 
-/** 资源清单中的一条 */
-export interface Resource {
-  name: string
-  path?: string
-  type: "memory" | "asset"
-  cached: boolean
-  pricePer1K: number
-  description: string
-}
-
 /** 最大 ReAct 循环轮数 */
 export const MAX_REACT_ITERATIONS = 20
 
@@ -95,25 +53,10 @@ export interface DispatchConfig {
   responseSchema?: Record<string, unknown>
 }
 
-/** 子Agent执行过程的每一步 */
-export interface ProcessStep {
-  step: number
-  type: "llm_call" | "tool_call" | "tool_result" | "interception" | "final"
-  content: string
-  tool_name?: string
-  tool_args?: string
-}
-
 /** 子Agent完整回执 */
 export interface SubAgentResult {
   status: "completed" | "error"
   output: string
   /** 如果 dispatch 指定了 responseSchema，此处为解析后的结构化数据，否则为 null */
   structured?: Record<string, unknown> | null
-  process: ProcessStep[]
 }
-
-/** 编排Agent的固定ID */
-export const ORCHESTRATOR_ID = "orchestrator"
-/** 编排Agent默认权限（全部工具） */
-export const ORCHESTRATOR_PERMISSIONS = ["read", "write", "grep", "bash", "dispatch"]
