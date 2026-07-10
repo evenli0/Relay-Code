@@ -66,13 +66,7 @@ export class Harness {
     // 后缀：编排Agent的 prompt
     let prompt = ""
     if (config.prompt.role) prompt += `角色：${config.prompt.role}\n`
-    if (config.prompt.constraints && config.prompt.constraints.length > 0) {
-      prompt += "约束：\n" + config.prompt.constraints.map((c) => `  - ${c}`).join("\n") + "\n"
-    }
     prompt += `任务：${config.prompt.task}\n`
-    if (config.prompt.anything_else) {
-      prompt += `补充：${config.prompt.anything_else}\n`
-    }
 
     // 如果指定了 responseSchema，要求子Agent按JSON格式返回
     if (config.responseSchema) {

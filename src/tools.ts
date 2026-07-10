@@ -105,61 +105,70 @@ const dispatchTool: ToolDefinition = {
   type: "function",
   function: {
     name: "dispatch",
-    description: "创建一个子Agent完成指定任务。" +
-      "可以控制子Agent的上下文（preload文件）、角色和任务（prompt）、工具权限（allowed_tools）。" +
-      "\n成本提示：preload已封箱的文件可命中KV Cache（约1/10价格），建议优先使用已缓存的本地文件。",
+    description: [
+      '派一个子Agent执行编排好的多阶段任务。子Agent按plan.phases顺序执行所有阶段后一次性回报。',
+      '',
+      '示例：',
+      'dispatch({',
+      '  prompt: { task: "审查并修复 login.ts 的安全问题" },',
+      '  plan: {',
+      '    goal: "提升 login.ts 的安全性",',
+      '    phases: [',
+      '      { name: "分析", description: "读取 login.ts，理解代码结构" },',
+      '      { name: "审查", description: "找出所有安全漏洞", parallel: true },',
+      '      { name: "修复", description: "根据审查结果修复漏洞" },',
+      '    ]',
+      '  },',
+      '  allowed_tools: ["read", "write", "grep", "bash"],',
+      '  responseSchema: { type: "object", properties: { findings: { type: "array" } } }',
+      '})',
+    ].join("\n"),
     parameters: {
       type: "object",
       required: ["prompt", "plan"],
       properties: {
-        preload: {
-          type: "array",
-          items: { type: "string" },
-          description: "预载到子Agent上下文的本地文件路径。不传则子Agent只有系统提示和prompt。",
-        },
         prompt: {
           type: "object",
           required: ["task"],
           properties: {
-            role: { type: "string", description: "子Agent的角色定义" },
-            constraints: {
-              type: "array",
-              items: { type: "string" },
-              description: "约束条件列表",
-            },
-            task: { type: "string", description: "核心任务，说清楚要做什么" },
-            anything_else: { type: "string", description: "自由补充" },
+            task: { type: "string", description: "（必填）子Agent要完成的具体任务" },
+            role: { type: "string", description: "（可选）子Agent的角色，如「安全审计员」" },
           },
+        },
+        plan: {
+          type: "object",
+          description: "（必填）编排计划",
+          required: ["goal", "phases"],
+          properties: {
+            goal: { type: "string", description: "（必填）本次编排的总体目标" },
+            phases: {
+              type: "array",
+              description: "（必填）阶段列表。子Agent按顺序执行每个阶段，所有阶段完成后再回报。parallel=true 表示该阶段的子任务可以并行执行。",
+              items: {
+                type: "object",
+                required: ["name", "description"],
+                properties: {
+                  name: { type: "string", description: "阶段名称" },
+                  description: { type: "string", description: "这个阶段要完成什么" },
+                  parallel: { type: "boolean", description: "true=该阶段可并行" },
+                },
+              },
+            },
+          },
+        },
+        preload: {
+          type: "array",
+          items: { type: "string" },
+          description: "（可选）预载到子Agent上下文的文件路径。不传则子Agent只有系统提示和prompt。",
         },
         allowed_tools: {
           type: "array",
           items: { type: "string", enum: ["read", "write", "edit", "grep", "bash"] },
-          description: "子Agent可用工具白名单。不传=全部可用，传空数组=只能LLM不能调工具。",
+          description: "（可选）子Agent可用工具。不传=全部可用，传[]=纯LLM无工具。",
         },
         responseSchema: {
           type: "object",
-          description: "可选。指定子Agent输出的JSON结构（JSON Schema格式）。子Agent会按此结构返回，主Agent可直接解析字段。",
-        },
-        plan: {
-          type: "object",
-          description: "编排计划，定义子Agent的任务阶段。子Agent拿到后知道自己要做完所有阶段才回报。",
-          required: ["goal", "phases"],
-          properties: {
-            goal: { type: "string", description: "总体目标" },
-            phases: {
-              type: "array",
-              description: "阶段列表——按顺序执行。每个阶段子Agent自己决定具体怎么做。parallel=true的阶段的子任务可以并行。",
-              items: {
-                type: "object",
-                properties: {
-                  name: { type: "string" },
-                  description: { type: "string" },
-                  parallel: { type: "boolean", description: "是否为并行阶段" },
-                },
-                required: ["name", "description"],
-              },
-            },
-          },
+          description: "（可选）指定子Agent输出的JSON结构。子Agent会按此结构返回结构化结果。",
         },
       },
     },

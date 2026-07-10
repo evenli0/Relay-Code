@@ -59,18 +59,13 @@ test("消息拼装：完整 prompt 结构", async () => {
   const msgs = await harness.assembleMessages({
     prompt: {
       role: "代码审查员",
-      constraints: ["接口兼容", "中文注释"],
       task: "审查login.ts",
-      anything_else: "注意第42行",
     },
   })
 
   const content = msgs[msgs.length - 1]?.content ?? ""
   expect(content).toContain("代码审查员")
-  expect(content).toContain("接口兼容")
-  expect(content).toContain("中文注释")
   expect(content).toContain("审查login.ts")
-  expect(content).toContain("第42行")
 })
 
 test("消息拼装：多个 preload 文件", async () => {

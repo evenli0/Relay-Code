@@ -24,9 +24,13 @@ export class Orchestrator {
     ]
 
     for (let i = 0; i < MAX_REACT_ITERATIONS; i++) {
+      const stepLabel = `[${i + 1}/${MAX_REACT_ITERATIONS}]`
+      process.stderr.write(`${stepLabel} 思考中...\r`)
+
       const response = await callLLM(messages, ALL_TOOLS)
 
       if (!response.tool_calls || response.tool_calls.length === 0) {
+        process.stderr.write(`${stepLabel} 完成\n`)
         return response.content ?? ""
       }
 
@@ -36,6 +40,16 @@ export class Orchestrator {
         try { args = JSON.parse(tc.function.arguments) } catch { args = {} }
         return { tc, args }
       })
+
+      // 输出本轮要做什么
+      const actions = parsed.map(({ tc, args }) => {
+        if (tc.function.name === "dispatch") {
+          const task = (args as any)?.prompt?.task ?? ""
+          return `dispatch: ${task.substring(0, 50)}`
+        }
+        return tc.function.name
+      })
+      process.stderr.write(`${stepLabel} ${actions.join(" + ")}\n`)
 
       // 并行执行所有工具调用
       const results = await Promise.all(

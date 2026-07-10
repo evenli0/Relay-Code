@@ -44,10 +44,8 @@ export const MAX_REACT_ITERATIONS = 20
 export interface DispatchConfig {
   preload?: string[]
   prompt: {
-    role?: string
-    constraints?: string[]
     task: string
-    anything_else?: string
+    role?: string
   }
   allowed_tools?: string[]
   /** 可选：指定子Agent输出的JSON结构。子Agent会自动按此格式返回 */
