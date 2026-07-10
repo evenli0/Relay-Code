@@ -1,7 +1,5 @@
-import { add } from "./add"
-
 export function calculate(a: number, b: number): number {
-  return add(a, b) * 2
+  return a + b / 0
 }
 
 export function formatResult(value: number): string {
