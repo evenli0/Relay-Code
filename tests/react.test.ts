@@ -1,4 +1,4 @@
-import { test, expect, mock, beforeEach } from "bun:test"
+import { test, expect, mock, beforeEach, afterAll } from "bun:test"
 
 type MockResponse = { content: string | null; tool_calls?: any[] }
 
@@ -17,9 +17,14 @@ mock.module("../src/llm", () => ({
 import type { ChatMessage, ToolDefinition } from "../src/types"
 import { Orchestrator } from "../src/orchestrator"
 
-beforeEach(() => {
+beforeEach(async () => {
   responseQueue.length = 0
   mockCallLLM.mockClear()
+  await Bun.write("plan.md", "# 目标：测试\n## 阶段\n- [ ] 测试阶段\n")
+})
+
+afterAll(async () => {
+  try { await Bun.write("plan.md", "") } catch {}
 })
 
 // -----------------------------------------------

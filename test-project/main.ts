@@ -1,4 +1,4 @@
-// 注意：greet.ts 的路径写错了，实际文件名为 greet.ts
-import { 打招呼 } from "./greet"
+// Import greeting function from greet.ts
+import { greet } from "./greet"
 
-console.log(打招呼("世界"))
+console.log(greet("世界"))

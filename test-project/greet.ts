@@ -1,4 +1,4 @@
-/** 打招呼函数 */
-export function 打招呼(name: string): string {
+/** Greeting function */
+export function greet(name: string): string {
   return `你好，${name}！`
 }

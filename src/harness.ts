@@ -24,7 +24,13 @@ export class Harness {
     if (toolName === "dispatch") {
       const config = args as unknown as DispatchConfig
       if (!config.prompt?.task) return "dispatch 缺少 prompt.task"
-      if (!config.plan?.goal || !config.plan?.phases) return "dispatch 缺少 plan（goal 和 phases 必填）。请先规划好子Agent的阶段编排再 dispatch。"
+
+      // plan.md 是编排的必备文件，不存在时引导先写计划
+      const planFile = Bun.file("plan.md")
+      if (!(await planFile.exists())) {
+        return "dispatch 需要 plan.md 才能执行。请先用 write(\"plan.md\", content) 写下计划，规划好目标（# 目标：）和阶段列表（## 阶段），再 dispatch。"
+      }
+
       const result = await this.dispatch(config)
       if (result.structured) {
         return `[dispatch 完成]\n状态: ${result.status}\n结构化结果:\n${JSON.stringify(result.structured, null, 2)}`

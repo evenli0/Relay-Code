@@ -48,14 +48,16 @@ export interface DispatchConfig {
     role?: string
   }
   allowed_tools?: string[]
-  /** 可选：指定子Agent输出的JSON结构。子Agent会自动按此格式返回 */
+  /** 可选：指定子Agent输出的JSON结构 */
   responseSchema?: Record<string, unknown>
-  /** 计划上下文。告诉子Agent它在整体任务中的位置 */
-  plan: {
-    goal: string        // 总体目标
-    phases: {           // 阶段编排
-      name: string       // 阶段名称
-      description: string // 阶段要完成什么
+  /** 可选：当前阶段名称，和 plan.md 对齐 */
+  phase?: string
+  /** 可选：计划上下文（已弃用，改用 plan.md 文件） */
+  plan?: {
+    goal: string
+    phases: {
+      name: string
+      description: string
     }[]
   }
 }
