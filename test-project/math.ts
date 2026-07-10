@@ -1,1 +1,7 @@
-// 已拆分为 add.ts 和 multiply.ts
+export function add(a: number, b: number): number {
+  return a + b
+}
+
+export function multiply(a: number, b: number): number {
+  return a * b
+}

@@ -80,8 +80,7 @@ export class Harness {
       if (config.plan.phases && config.plan.phases.length > 0) {
         prompt += `阶段编排：\n`
         for (const phase of config.plan.phases) {
-          const tag = phase.parallel ? " ⏩ 可并行" : " →"
-          prompt += `  ${tag} ${phase.name}：${phase.description}\n`
+          prompt += `  → ${phase.name}：${phase.description}\n`
         }
       }
     }

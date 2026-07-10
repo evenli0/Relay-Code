@@ -181,7 +181,7 @@ test("plan 参数：有 plan 时 prompt 包含阶段编排", async () => {
       goal: "实现用户登录功能",
       phases: [
         { name: "分析", description: "分析现有登录代码" },
-        { name: "重构", description: "执行重构并并行审查", parallel: true },
+        { name: "重构", description: "执行重构并并行审查" },
         { name: "验证", description: "测试结果" },
       ],
     },
@@ -208,7 +208,7 @@ test("plan 参数：子 Agent prompt 中能看到所有阶段", async () => {
       goal: "实现用户登录",
       phases: [
         { name: "分析", description: "分析现有代码" },
-        { name: "重构", description: "执行重构", parallel: true },
+        { name: "重构", description: "执行重构" },
         { name: "验证", description: "测试结果" },
       ],
     },
