@@ -3,6 +3,7 @@
 /** LLM 调用返回（支持 tool calling） */
 export interface LLMResponse {
   content: string | null
+  reasoning_content?: string | null
   tool_calls?: ToolCall[]
 }
 
@@ -31,7 +32,7 @@ export interface ToolDefinition {
 export type ChatMessage =
   | { role: "system"; content: string }
   | { role: "user"; content: string }
-  | { role: "assistant"; content: string | null; tool_calls?: ToolCall[] }
+  | { role: "assistant"; content: string | null; tool_calls?: ToolCall[]; reasoning_content?: string | null }
   | { role: "tool"; content: string; tool_call_id: string }
 
 /** 最大 ReAct 循环轮数 */

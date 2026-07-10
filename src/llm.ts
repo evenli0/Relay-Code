@@ -33,8 +33,12 @@ export async function callLLM(
   const choice = res.choices[0]?.message
   if (!choice) return { content: "", tool_calls: undefined }
 
+  // DeepSeek 返回的 reasoning_content 需要回传
+  const reasoningContent = (choice as any).reasoning_content ?? null
+
   return {
     content: choice.content ?? null,
+    reasoning_content: reasoningContent,
     tool_calls: choice.tool_calls?.map((tc) => ({
       id: tc.id,
       type: "function" as const,
@@ -57,6 +61,7 @@ function mapMessage(msg: ChatMessage): OpenAI.ChatCompletionMessageParam {
       return {
         role: "assistant",
         content: msg.content,
+        reasoning_content: msg.reasoning_content ?? null,
         tool_calls: msg.tool_calls?.map((tc) => ({
           id: tc.id,
           type: "function" as const,

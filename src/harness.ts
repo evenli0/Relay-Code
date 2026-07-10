@@ -162,7 +162,7 @@ export class SubAgent {
 
       // 按顺序放回消息列表
       parsed.forEach(({ tc }, i) => {
-        this.messages.push({ role: "assistant", content: null, tool_calls: [tc] })
+        this.messages.push({ role: "assistant", content: null, tool_calls: [tc], reasoning_content: response.reasoning_content ?? null })
         this.messages.push({ role: "tool", content: results[i]!, tool_call_id: tc.id })
       })
     }

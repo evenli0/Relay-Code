@@ -46,7 +46,7 @@ export class Orchestrator {
 
       // 按顺序放回消息列表
       parsed.forEach(({ tc }, i) => {
-        messages.push({ role: "assistant", content: null, tool_calls: [tc] })
+        messages.push({ role: "assistant", content: null, tool_calls: [tc], reasoning_content: response.reasoning_content ?? null })
         messages.push({ role: "tool", content: results[i]!, tool_call_id: tc.id })
       })
     }

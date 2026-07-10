@@ -1,0 +1,26 @@
+{
+  "三视角审查": {
+    "subAgentCount": 3,
+    "hasSummary": true,
+    "coverage": ["安全性", "性能", "可维护性"]
+  },
+  "分治写测例": {
+    "writtenFiles": ["add.test.ts", "utils.test.ts"],
+    "testsRunable": true
+  },
+  "空结果处理": {
+    "resultType": "empty",
+    "noFabrication": true
+  },
+  "文件不存在": {
+    "originalFile": "greet.ts",
+    "actualFile": "gret.ts",
+    "foundByAgent": true,
+    "goalAchieved": true
+  },
+  "远景规划": {
+    "splitFiles": ["add.ts", "multiply.ts"],
+    "updatedImports": ["main.ts", "utils.ts"],
+    "noMissingReference": true
+  }
+}
