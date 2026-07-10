@@ -24,6 +24,7 @@ export class Harness {
     if (toolName === "dispatch") {
       const config = args as unknown as DispatchConfig
       if (!config.prompt?.task) return "dispatch 缺少 prompt.task"
+      if (!config.plan?.goal || !config.plan?.phases) return "dispatch 缺少 plan（goal 和 phases 必填）。请先规划好子Agent的阶段编排再 dispatch。"
       const result = await this.dispatch(config)
       if (result.structured) {
         return `[dispatch 完成]\n状态: ${result.status}\n结构化结果:\n${JSON.stringify(result.structured, null, 2)}`
@@ -78,13 +79,16 @@ export class Harness {
       prompt += `\n最终结果格式要求（严格 JSON，不要包含 markdown 代码块或额外文本，只输出纯 JSON）：\n${JSON.stringify(config.responseSchema, null, 2)}\n`
     }
 
-    // 如果指定了 plan，告诉子Agent它在整体任务中的位置
+    // 如果指定了 plan，告诉子Agent完整的阶段编排
     if (config.plan) {
       prompt += `\n[计划上下文]\n`
       if (config.plan.goal) prompt += `总体目标：${config.plan.goal}\n`
-      if (config.plan.currentStep) prompt += `当前步骤：${config.plan.currentStep}\n`
-      if (config.plan.steps && config.plan.steps.length > 0) {
-        prompt += `完整步骤：\n` + config.plan.steps.map((s, i) => `  ${i + 1}. ${s}`).join("\n") + "\n"
+      if (config.plan.phases && config.plan.phases.length > 0) {
+        prompt += `阶段编排：\n`
+        for (const phase of config.plan.phases) {
+          const tag = phase.parallel ? " ⏩ 可并行" : " →"
+          prompt += `  ${tag} ${phase.name}：${phase.description}\n`
+        }
       }
     }
 

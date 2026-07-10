@@ -178,43 +178,51 @@ test("responseSchema：子 Agent 返回非法 JSON → structured 为 null", asy
 // plan 参数测试
 // =============================================
 
-test("plan 参数：有 plan 时 prompt 包含计划上下文", async () => {
+test("plan 参数：有 plan 时 prompt 包含阶段编排", async () => {
   const harness = new Harness()
   const msgs = await harness.assembleMessages({
-    prompt: { task: "审查登录模块" },
+    prompt: { task: "重构登录模块" },
     plan: {
       goal: "实现用户登录功能",
-      steps: ["编写登录模块", "审查登录模块", "修复问题"],
-      currentStep: "审查登录模块",
+      phases: [
+        { name: "分析", description: "分析现有登录代码" },
+        { name: "重构", description: "执行重构并并行审查", parallel: true },
+        { name: "验证", description: "测试结果" },
+      ],
     },
   })
 
   const content = msgs[msgs.length - 1]?.content ?? ""
   expect(content).toContain("实现用户登录功能")
-  expect(content).toContain("审查登录模块")
-  expect(content).toContain("编写登录模块")
-  expect(content).toContain("修复问题")
+  expect(content).toContain("分析")
+  expect(content).toContain("重构")
+  expect(content).toContain("验证")
+  expect(content).toContain("并行")
 })
 
-test("plan 参数：子 Agent prompt 中能看到计划上下文", async () => {
+test("plan 参数：子 Agent prompt 中能看到所有阶段", async () => {
   responseQueue.push({
-    content: "我看到我处于审查阶段，之后还要修复问题。",
+    content: "我看到有三个阶段要做：分析现有代码，重构，然后验证。",
     tool_calls: undefined,
   })
 
   const harness = new Harness()
   const result = await harness.dispatch({
-    prompt: { task: "审查登录模块" },
+    prompt: { task: "重构登录模块" },
     plan: {
       goal: "实现用户登录",
-      steps: ["编写", "审查", "修复"],
-      currentStep: "审查",
+      phases: [
+        { name: "分析", description: "分析现有代码" },
+        { name: "重构", description: "执行重构", parallel: true },
+        { name: "验证", description: "测试结果" },
+      ],
     },
   })
 
   expect(result.status).toBe("completed")
-  expect(result.output).toContain("审查")
-  expect(result.output).toContain("修复")
+  expect(result.output).toContain("分析")
+  expect(result.output).toContain("重构")
+  expect(result.output).toContain("验证")
 })
 
 // =============================================

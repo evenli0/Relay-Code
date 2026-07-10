@@ -110,7 +110,7 @@ const dispatchTool: ToolDefinition = {
       "\n成本提示：preload已封箱的文件可命中KV Cache（约1/10价格），建议优先使用已缓存的本地文件。",
     parameters: {
       type: "object",
-      required: ["prompt"],
+      required: ["prompt", "plan"],
       properties: {
         preload: {
           type: "array",
@@ -142,11 +142,23 @@ const dispatchTool: ToolDefinition = {
         },
         plan: {
           type: "object",
-          description: "可选。计划上下文，告诉子Agent它在整体任务中的位置。",
+          description: "编排计划，定义子Agent的任务阶段。子Agent拿到后知道自己要做完所有阶段才回报。",
+          required: ["goal", "phases"],
           properties: {
             goal: { type: "string", description: "总体目标" },
-            steps: { type: "array", items: { type: "string" }, description: "所有步骤" },
-            currentStep: { type: "string", description: "当前这一步" },
+            phases: {
+              type: "array",
+              description: "阶段列表——按顺序执行。每个阶段子Agent自己决定具体怎么做。parallel=true的阶段的子任务可以并行。",
+              items: {
+                type: "object",
+                properties: {
+                  name: { type: "string" },
+                  description: { type: "string" },
+                  parallel: { type: "boolean", description: "是否为并行阶段" },
+                },
+                required: ["name", "description"],
+              },
+            },
           },
         },
       },
