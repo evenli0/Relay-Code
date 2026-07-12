@@ -52,7 +52,7 @@ export interface DispatchConfig {
   responseSchema: Record<string, unknown>
   /** 可选：当前阶段名称，和 plan.md 对齐 */
   phase?: string
-  /** 可选：计划上下文（已弃用，改用 plan.md 文件） */
+  /** 可选：工作流规划。传入后 harness 自动创建 plan.md，无需手动 write 文件 */
   plan?: {
     goal: string
     phases: {
