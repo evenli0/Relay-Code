@@ -3,7 +3,7 @@ import { MAX_REACT_ITERATIONS } from "./types"
 import { callLLM } from "./llm"
 import { ALL_TOOLS } from "./tools"
 
-const SUB_AGENT_SYSTEM_PROMPT = "你是一个子Agent。完成任务后输出最终结果。"
+const SUB_AGENT_SYSTEM_PROMPT = "你是一个子Agent。输出是返回值，不是对话。不要道歉，不要问用户。"
 
 /**
  * Harness —— dispatch 工厂
@@ -12,6 +12,40 @@ const SUB_AGENT_SYSTEM_PROMPT = "你是一个子Agent。完成任务后输出最
  * 没有权限检查，没有过程记录。
  */
 export class Harness {
+  /** 已注入过的 plan 内容，避免重复注入 */
+  private injectedPlans: Set<string> = new Set()
+
+  /**
+   * 获取 plan 注入消息（像 Skill 一样）
+   * 如果 plan.md 存在且未完成，返回 user 消息包含当前计划 + 执行规则
+   * 如果 plan 内容已注入过，返回空数组（缓存前缀不受影响）
+   */
+  async getPlanMessages(): Promise<ChatMessage[]> {
+    const planFile = Bun.file("plan.md")
+    if (!(await planFile.exists())) return []
+
+    const content = await planFile.text()
+    if (!content.trim() || content.includes("status: completed")) return []
+
+    const rules = [
+      "执行规则：",
+      "- 按阶段顺序执行，完成一个阶段后 write 更新 plan.md 状态",
+      "- 检查子Agent 返回的结构化结果中的关键决策和发现，确认合理后再继续",
+      "- 如果子Agent 的结论有问题（遗漏、幻觉、错误），修正 plan 后重试",
+      "- 遇到障碍（文件不存在、任务失败），修改后续阶段调整路线",
+      "- 同一阶段内多个 dispatch 可以在同一轮发出",
+      "- 修改 plan 后用 write 保存，系统下次自动采用新版本",
+    ].join("\n")
+
+    const fullContent = `[当前计划]\n${content}\n\n${rules}`
+
+    const key = fullContent.trim()
+    if (this.injectedPlans.has(key)) return [] // 已注入过此版本
+
+    this.injectedPlans.add(key)
+    return [{ role: "user" as const, content: fullContent }]
+  }
+
   /**
    * 工具执行
    * dispatch 由 Harness 内部处理，其余工具直接执行。
@@ -24,6 +58,7 @@ export class Harness {
     if (toolName === "dispatch") {
       const config = args as unknown as DispatchConfig
       if (!config.prompt?.task) return "dispatch 缺少 prompt.task"
+      if (!config.responseSchema) return "dispatch 缺少 responseSchema（子Agent的JSON输出结构）。请在 responseSchema 中定义子Agent的返回格式。"
 
       // plan.md 是编排的必备文件，不存在时引导先写计划
       const planFile = Bun.file("plan.md")
@@ -111,7 +146,17 @@ export class Harness {
       try {
         result.structured = JSON.parse(result.output)
       } catch {
-        result.structured = null
+        // fallback: 从 markdown 代码块中提取 JSON
+        try {
+          const match = result.output.match(/```(?:json)?\s*([\s\S]*?)```/)
+          if (match) {
+            result.structured = JSON.parse(match[1]!.trim())
+          } else {
+            result.structured = null
+          }
+        } catch {
+          result.structured = null
+        }
       }
     }
 

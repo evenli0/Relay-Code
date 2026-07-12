@@ -11,5 +11,5 @@ export function buildSystemPrompt(): string {
   write(path, cont) —— 写入本地文件
   grep(pattern)     —— 搜索文本
   bash(command)     —— 执行 shell 命令
-  dispatch(opts)    —— 派子Agent 执行当前阶段。plan.md 记录整体编排计划。`
+  dispatch(opts)    —— 创建一个子Agent执行任务。`
 }

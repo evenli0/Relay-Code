@@ -5,3 +5,6 @@ dist/
 __MACOSX/
 memory/
 test_*.json
+
+# 审查报告输出
+审查报告*.md

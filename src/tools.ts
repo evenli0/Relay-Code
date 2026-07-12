@@ -108,10 +108,10 @@ const dispatchTool: ToolDefinition = {
     description: [
       '创建一个子Agent执行任务。子Agent有独立上下文和工具。',
       '',
-      'prompt.task = 当前子Agent的具体任务',
-      'prompt.role = 子Agent的角色身份（如安全审计员）',
-      'preload = 子Agent的上下文前缀，同preload可命中KV Cache省钱',
-      'responseSchema = 结构化返回格式（用于决策）',
+      'prompt.task = 子Agent的具体任务（必填）',
+      'responseSchema = 子Agent返回的JSON结构（必填）',
+      'prompt.role = 子Agent的角色身份（可选）',
+      'preload = 上下文前缀（可选，同preload省KV Cache）',
       '',
       '示例：',
       'dispatch({',
@@ -122,7 +122,7 @@ const dispatchTool: ToolDefinition = {
     ].join("\n"),
     parameters: {
       type: "object",
-      required: ["prompt"],
+      required: ["prompt", "responseSchema"],
       properties: {
         prompt: {
           type: "object",

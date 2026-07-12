@@ -61,6 +61,7 @@ test("dispatch工具调用 → 结果放回 → 再调LLM → 返回文本", asy
           arguments: JSON.stringify({
             prompt: { task: "写一个hello world脚本" },
             plan: { goal: "测试", phases: [{ name: "执行", description: "写脚本" }] },
+            responseSchema: { type: "object", properties: { result: { type: "string" } } },
           }),
         },
       },
