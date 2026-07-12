@@ -108,6 +108,8 @@ const dispatchTool: ToolDefinition = {
     description: [
       '工作流编排：派生子Agent并行执行子任务。仅在用户要求工作流/并行/动态编排时使用。',
       '',
+      '⚠ 必须先 write("plan.md", 内容) 写下计划才能 dispatch。plan.md 不存在时 dispatch 会被拒绝。',
+      '',
       'plan 管理：',
       '- 蓝图存在 plans/<名字>/plan.md，可复用。阅读时只看 name+description，展开后看具体阶段',
       '- 创建实例：write("plans/<名字>/records/<日期>_<任务>.md", 内容)，内容须包含 name+description+阶段',
