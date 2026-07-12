@@ -22,8 +22,12 @@ export class Harness {
    * 如果 plan 内容已注入过，返回空数组（缓存前缀不受影响）
    */
   async getPlanMessages(): Promise<ChatMessage[]> {
-    const planFile = Bun.file("plan.md")
-    if (!(await planFile.exists())) return []
+    // 先看根目录 plan.md（向后兼容），再看 plans/current.md（蓝图实例）
+    let planFile = Bun.file("plan.md")
+    if (!(await planFile.exists())) {
+      planFile = Bun.file("plans/current.md")
+      if (!(await planFile.exists())) return []
+    }
 
     const content = await planFile.text()
     if (!content.trim() || content.includes("status: completed")) return []
@@ -62,16 +66,10 @@ export class Harness {
       if (!config.prompt?.task) return "dispatch 缺少 prompt.task"
       if (!config.responseSchema) return "dispatch 缺少 responseSchema（子Agent的JSON输出结构）。请在 responseSchema 中定义子Agent的返回格式。"
 
-      // plan.md 是编排的必备文件
+      // plan.md 是编排的必备文件，不存在时引导先写计划
       const planFile = Bun.file("plan.md")
       if (!(await planFile.exists())) {
-        if (config.plan) {
-          // 如果 dispatch 参数中带了 plan，自动创建 plan.md
-          const planMd = `# 目标：${config.plan.goal}\n\n${(config.plan.phases ?? []).map((p, i) => `## 阶段 ${i + 1}：${p.name}\n${p.description}`).join("\n\n")}\n`
-          await Bun.write("plan.md", planMd)
-        } else {
-          return "dispatch 需要 plan.md 才能执行。请先在 dispatch 参数中传入 plan（规划目标和阶段），或 write(\"plan.md\", content) 手动创建。"
-        }
+        return "dispatch 需要 plan.md 或 plans/current.md 才能执行。请先用 write 写下计划，再 dispatch。"
       }
 
       const result = await this.dispatch(config)

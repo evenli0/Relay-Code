@@ -108,8 +108,12 @@ const dispatchTool: ToolDefinition = {
     description: [
       '工作流编排：派生子Agent并行执行子任务。仅在用户要求工作流/并行/动态编排时使用。',
       '',
-      '使用流程：在 dispatch 参数中传入 plan（规划目标和阶段），dispatch 自动处理计划管理。',
-      'plan 参数格式：{ goal: "总体目标", phases: [{ name: "阶段名", description: "阶段描述" }] }',
+      'plan 管理：',
+      '- 蓝图存在 plans/<名字>/plan.md，可复用。阅读时只看 name+description，展开后看具体阶段',
+      '- 使用蓝图：复制到 plans/<名字>/records/<日期>_<任务>.md 作为实例',
+      '- 激活实例：write("plans/current.md", 实例内容)，harness 会自动注入到上下文',
+      '- 执行中可不断 write 更新实例的进度，完成后保留作为记录',
+      '- 如果直接用 plan.md（根目录）也可以，harness 优先读 plan.md',
       '',
       'prompt.task = 子Agent的具体任务（必填）',
       'responseSchema = 子Agent返回的JSON结构（必填）',
@@ -139,16 +143,12 @@ const dispatchTool: ToolDefinition = {
         },
         phase: {
           type: "string",
-          description: "（可选）当前执行的阶段名称，对应 plan 参数中的阶段",
+          description: "（可选）当前执行的阶段名称，和 plan.md 中的阶段对齐",
         },
         allowed_tools: {
           type: "array",
           items: { type: "string", enum: ["read", "write", "edit", "grep", "bash"] },
           description: "（可选）子Agent可用工具。不传=全部可用，传[]=纯LLM无工具。",
-        },
-        plan: {
-          type: "object",
-          description: "（可选）工作流规划。传入后 harness 自动创建 plan.md。格式：{ goal: \"总体目标\", phases: [{ name: \"阶段名\", description: \"阶段描述\" }] }",
         },
       },
     },
