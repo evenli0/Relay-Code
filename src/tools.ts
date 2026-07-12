@@ -106,9 +106,9 @@ const dispatchTool: ToolDefinition = {
   function: {
     name: "dispatch",
     description: [
-      '工作流编排：派生子Agent并行执行子任务。适合多角度并行、分治执行的复杂场景。',
+      '工作流编排：派生子Agent并行执行子任务。仅在用户要求工作流/并行/动态编排时使用。',
       '',
-      '简单任务（读/写文件、搜索文本、单步修改）直接用 read/write/grep/bash，不需要 dispatch。',
+      '使用流程：先 write("plan.md", content) 写出阶段规划，再 dispatch 子Agent 执行。',
       '',
       'prompt.task = 子Agent的具体任务（必填）',
       'responseSchema = 子Agent返回的JSON结构（必填）',

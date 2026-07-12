@@ -11,5 +11,5 @@ export function buildSystemPrompt(): string {
   write(path, cont) —— 写入本地文件
   grep(pattern)     —— 搜索文本
   bash(command)     —— 执行 shell 命令
-  dispatch(opts)    —— 工作流编排：派生子Agent并行执行子任务。`
+  dispatch(opts)    —— 工作流编排：派生子Agent并行执行子任务（仅在需要工作流/并行/动态编排时使用）`
 }
