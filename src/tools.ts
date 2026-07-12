@@ -120,6 +120,7 @@ const dispatchTool: ToolDefinition = {
       'prompt.task = 子Agent的具体任务（必填）',
       'responseSchema = 子Agent返回的JSON结构（必填）',
       'prompt.role = 子Agent的角色身份（可选）',
+      'prompt.instructions = 子Agent的行为指引（可选，根据 task 和 role 生成能显著提高回答质量）',
       'preload = 上下文前缀（可选，同preload省KV Cache）',
     ].join("\n"),
     parameters: {
@@ -132,6 +133,7 @@ const dispatchTool: ToolDefinition = {
           properties: {
             task: { type: "string", description: "（必填）子Agent要完成的具体任务" },
             role: { type: "string", description: "（可选）子Agent的角色，如「安全审计员」" },
+            instructions: { type: "string", description: "（可选）子Agent的行为指引。根据 task 和 role 生成详细的身份描述和输出规范，能显著提高回答质量" },
           },
         },
         preload: {

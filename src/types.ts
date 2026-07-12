@@ -46,6 +46,7 @@ export interface DispatchConfig {
   prompt: {
     task: string
     role?: string
+    instructions?: string
   }
   allowed_tools?: string[]
   /** 子Agent输出的JSON结构 */

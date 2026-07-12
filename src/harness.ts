@@ -112,6 +112,9 @@ export class Harness {
 
     // 后缀：编排Agent的 prompt
     let prompt = ""
+    if (config.prompt.instructions) {
+      messages.push({ role: "system", content: config.prompt.instructions })
+    }
     if (config.prompt.role) prompt += `角色：${config.prompt.role}\n`
     prompt += `任务：${config.prompt.task}\n`
 
