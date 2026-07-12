@@ -106,19 +106,14 @@ const dispatchTool: ToolDefinition = {
   function: {
     name: "dispatch",
     description: [
-      '创建一个子Agent执行任务。子Agent有独立上下文和工具。',
+      '工作流编排：派生子Agent并行执行子任务。适合多角度并行、分治执行的复杂场景。',
+      '',
+      '简单任务（读/写文件、搜索文本、单步修改）直接用 read/write/grep/bash，不需要 dispatch。',
       '',
       'prompt.task = 子Agent的具体任务（必填）',
       'responseSchema = 子Agent返回的JSON结构（必填）',
       'prompt.role = 子Agent的角色身份（可选）',
       'preload = 上下文前缀（可选，同preload省KV Cache）',
-      '',
-      '示例：',
-      'dispatch({',
-      '  preload: ["login.ts"],',
-      '  prompt: { task: "审查login.ts的安全漏洞", role: "安全审计员" },',
-      '  responseSchema: { type: "object", properties: { result: { type: "string" } } }',
-      '})',
     ].join("\n"),
     parameters: {
       type: "object",

@@ -1,14 +1,8 @@
-# 目标：三视角并行审查 math.ts
+# 目标：重构 greet.ts → 函数名改为 sayHello，并更新所有引用
 
-## 阶段 1 ✅ 已完成
-目标：从安全性、性能、可维护性三个角度审查 math.ts
-- [x] dispatch | role=安全审计员 | 审查安全性问题 ✅ 6个发现
-- [x] dispatch | role=性能工程师 | 审查性能问题 ✅ 4个发现
-- [x] dispatch | role=可维护性专家 | 审查可维护性问题 ✅ 3个发现
+## 阶段
 
-## 阶段 2 ✅ 已完成
-目标：汇总三份审查报告写入文件
-- [x] write 审查报告-math.ts.md ✅ 写入成功（3259字符）
+## 阶段1：修改 gret.ts — 将函数 greet 改为 sayHello ✅
+## 阶段2：修改 main.ts — 将引用 greet 的地方改为 sayHello ✅
 
-## 最终状态：全部完成 ✅
-报告已生成至 `审查报告-math.ts.md`
+## 状态：全部完成 ✅

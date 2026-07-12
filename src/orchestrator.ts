@@ -33,7 +33,7 @@ export class Orchestrator {
       // 注入 plan（像 Skill 一样追加到最新位置，内容不变时不重复注入）
       const planMessages = await this.harness.getPlanMessages()
       for (const pm of planMessages) {
-        saveDialogue("system", `[plan 注入] ${pm.content.substring(0, 100)}`)
+        await saveDialogue("system", `[plan 注入]\n${pm.content}`)
       }
       messages.push(...planMessages)
 
@@ -70,13 +70,13 @@ export class Orchestrator {
       )
 
       // 按顺序放回消息列表，并记录日志
-      parsed.forEach(({ tc }, i) => {
-        const resultText = results[i]!.substring(0, 200)
+      for (let ti = 0; ti < parsed.length; ti++) {
+        const { tc } = parsed[ti]!
         messages.push({ role: "assistant", content: null, tool_calls: [tc], reasoning_content: response.reasoning_content ?? null })
-        messages.push({ role: "tool", content: results[i]!, tool_call_id: tc.id })
-        saveDialogue("assistant", `[工具调用] ${tc.function.name}: ${tc.function.arguments.substring(0, 100)}`)
-        saveDialogue("tool", `[结果] ${resultText}`)
-      })
+        messages.push({ role: "tool", content: results[ti]!, tool_call_id: tc.id })
+        await saveDialogue("assistant", `[工具调用] ${tc.function.name}: ${tc.function.arguments}`)
+        await saveDialogue("tool", `[结果] ${results[ti]!}`)
+      }
     }
 
     await saveDialogue("assistant", "任务未在限定轮次内完成，请尝试简化指令后重试。")

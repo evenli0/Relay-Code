@@ -2,6 +2,7 @@ import type { ChatMessage, DispatchConfig, SubAgentResult } from "./types"
 import { MAX_REACT_ITERATIONS } from "./types"
 import { callLLM } from "./llm"
 import { ALL_TOOLS } from "./tools"
+import { saveDialogue } from "./memory"
 
 const SUB_AGENT_SYSTEM_PROMPT = "你是一个子Agent。输出是返回值，不是对话。不要道歉，不要问用户。"
 
@@ -30,8 +31,9 @@ export class Harness {
     const rules = [
       "执行规则：",
       "- 按阶段顺序执行，完成一个阶段后 write 更新 plan.md 状态",
-      "- 检查子Agent 返回的结构化结果中的关键决策和发现，确认合理后再继续",
-      "- 如果子Agent 的结论有问题（遗漏、幻觉、错误），修正 plan 后重试",
+      "- dispatch 给子Agent 的任务描述必须准确，不要编造代码细节（函数签名、文件路径等）",
+      "- 子Agent 返回后检查其 keyFindings，判断是否合理。合理就继续，不合理就修正 plan 重试",
+      "- dispatch 的 prompt 必须是 { task: \"...\" } 对象，不是字符串",
       "- 遇到障碍（文件不存在、任务失败），修改后续阶段调整路线",
       "- 同一阶段内多个 dispatch 可以在同一轮发出",
       "- 修改 plan 后用 write 保存，系统下次自动采用新版本",
@@ -109,9 +111,17 @@ export class Harness {
     if (config.prompt.role) prompt += `角色：${config.prompt.role}\n`
     prompt += `任务：${config.prompt.task}\n`
 
-    // 如果指定了 responseSchema，要求子Agent按JSON格式返回
+    // 如果指定了 responseSchema，注入标准字段 + 任务特定字段
     if (config.responseSchema) {
-      prompt += `\n最终结果格式要求（严格 JSON，不要包含 markdown 代码块或额外文本，只输出纯 JSON）：\n${JSON.stringify(config.responseSchema, null, 2)}\n`
+      const userProps = (config.responseSchema as any)?.properties ?? {}
+      // 过滤掉标准字段，防止重复
+      const STANDARD_FIELDS = new Set(["keyFindings", "decisions", "summary"])
+      const userFields = Object.entries(userProps)
+        .filter(([k]) => !STANDARD_FIELDS.has(k))
+        .map(([k, v]: [string, any]) => `      "${k}": ${JSON.stringify(v?.description ?? `${k}的内容`)}`)
+        .join(",\n")
+      const exampleJson = `{\n  "keyFindings": ["发现了 X 问题", "发现了 Y 问题"],\n  "decisions": ["决定做 A", "决定做 B"],\n  "summary": "一句话总结做了什么"${userFields ? `,\n${userFields}` : ""}\n}`
+      prompt += `\n输出纯 JSON，不要 markdown 代码块，不要额外文字。格式如下：\n${exampleJson}\n`
     }
 
     // 如果指定了 plan，告诉子Agent完整的阶段编排
@@ -184,10 +194,13 @@ export class SubAgent {
     )
 
     for (let i = 0; i < MAX_REACT_ITERATIONS; i++) {
+      await saveDialogue("system", `[子Agent 轮次 ${i + 1}/${MAX_REACT_ITERATIONS}]`)
+
       const response = await callLLM(this.messages, availableTools)
 
       // LLM 返回了最终文本 → 退出
       if (!response.tool_calls || response.tool_calls.length === 0) {
+        await saveDialogue("assistant", `[子Agent 完成] ${response.content ?? ""}`)
         return {
           status: "completed",
           output: response.content ?? "",
@@ -208,13 +221,17 @@ export class SubAgent {
         ),
       )
 
-      // 按顺序放回消息列表
-      parsed.forEach(({ tc }, i) => {
+      // 按顺序放回消息列表，并记录日志
+      for (let ti = 0; ti < parsed.length; ti++) {
+        const { tc } = parsed[ti]!
         this.messages.push({ role: "assistant", content: null, tool_calls: [tc], reasoning_content: response.reasoning_content ?? null })
-        this.messages.push({ role: "tool", content: results[i]!, tool_call_id: tc.id })
-      })
+        this.messages.push({ role: "tool", content: results[ti]!, tool_call_id: tc.id })
+        await saveDialogue("assistant", `[子Agent 工具] ${tc.function.name}: ${tc.function.arguments}`)
+        await saveDialogue("tool", `[子Agent 结果] ${results[ti]!}`)
+      }
     }
 
+    await saveDialogue("system", "[子Agent 超时]")
     return {
       status: "error",
       output: "子Agent任务未在限定轮次内完成",
