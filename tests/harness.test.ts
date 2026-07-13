@@ -378,3 +378,47 @@ test("worktree isolation: 不启用 isolation 时不影响正常 dispatch", asyn
   expect(mockRemoveWorktree).not.toHaveBeenCalled()
   expect(mockGetChanges).not.toHaveBeenCalled()
 })
+
+// =============================================
+// getPlanMessages 边界测试
+// =============================================
+
+test("getPlanMessages: 两文件都不存在 → 返回空数组", async () => {
+  // 确保 plan.md 和 plans/current.md 都不存在
+  try { await Bun.write("plan.md", "") } catch {}
+  try { await Bun.spawnSync(["rm", "-rf", "plans"]) } catch {}
+
+  const harness = new Harness()
+  const msgs = await harness.getPlanMessages()
+  expect(msgs).toEqual([])
+})
+
+test("getPlanMessages: plan.md 空白 → 返回空数组", async () => {
+  await Bun.write("plan.md", "")
+  // 确保没有 plans/current.md
+  try { await Bun.spawnSync(["rm", "-rf", "plans"]) } catch {}
+
+  const harness = new Harness()
+  const msgs = await harness.getPlanMessages()
+  expect(msgs).toEqual([])
+})
+
+test("getPlanMessages: plan.md 含 status: completed → 返回空数组", async () => {
+  await Bun.write("plan.md", "name: test\nstatus: completed\n")
+  try { await Bun.spawnSync(["rm", "-rf", "plans"]) } catch {}
+
+  const harness = new Harness()
+  const msgs = await harness.getPlanMessages()
+  expect(msgs).toEqual([])
+})
+
+test("getPlanMessages: 相同内容第二次调用 → 返回空数组（去重）", async () => {
+  await Bun.write("plan.md", "# 阶段1\n- [ ] 任务A\n")
+  try { await Bun.spawnSync(["rm", "-rf", "plans"]) } catch {}
+
+  const harness = new Harness()
+  const first = await harness.getPlanMessages()
+  const second = await harness.getPlanMessages()
+  expect(first.length).toBeGreaterThan(0)
+  expect(second).toEqual([])
+})
