@@ -27,13 +27,19 @@ export class PlanState {
 		let currentPhase: Phase | null = null;
 
 		for (const line of lines) {
-			const phaseMatch = line.match(/^##\s*(?:阶段|Phase)\s*\d*\s*[：:]\s*(.+)/);
+			const phaseMatch = line.match(
+				/^##\s*(?:阶段|Phase)\s*\d*\s*[：:]\s*(.+)/,
+			);
 			if (phaseMatch) {
 				if (currentPhase) this.phases.push(currentPhase);
 				currentPhase = {
 					name: phaseMatch[1]!.trim(),
 					description: "",
-					status: line.includes("✅") ? "completed" : line.includes("❌") ? "failed" : "pending",
+					status: line.includes("✅")
+						? "completed"
+						: line.includes("❌")
+							? "failed"
+							: "pending",
 				};
 				continue;
 			}
@@ -55,7 +61,10 @@ export class PlanState {
 
 	getPhaseDigest(): string {
 		return this.phases
-			.map((p, i) => `${i}:${p.status === "completed" ? "✅" : p.status === "failed" ? "❌" : p.status}`)
+			.map(
+				(p, i) =>
+					`${i}:${p.status === "completed" ? "✅" : p.status === "failed" ? "❌" : p.status}`,
+			)
 			.join(",");
 	}
 
@@ -65,7 +74,13 @@ export class PlanState {
 		for (let i = 0; i < this.phases.length; i++) {
 			const p = this.phases[i]!;
 			const marker =
-				p.status === "completed" ? "✅" : p.status === "failed" ? "❌" : i === this.currentIndex ? "▶️" : "⬜";
+				p.status === "completed"
+					? "✅"
+					: p.status === "failed"
+						? "❌"
+						: i === this.currentIndex
+							? "▶️"
+							: "⬜";
 			result += `${marker} ${p.name}${p.description ? `：${p.description}` : ""}\n`;
 		}
 		return result;
@@ -83,7 +98,10 @@ export class PlanState {
 
 	/** 检查是否所有阶段都已完成 */
 	isCompleted(): boolean {
-		return this.phases.length > 0 && this.phases.every((p) => p.status === "completed");
+		return (
+			this.phases.length > 0 &&
+			this.phases.every((p) => p.status === "completed")
+		);
 	}
 
 	/** 获取状态键（与 getPhaseDigest 相同） */
@@ -114,7 +132,7 @@ export class PlanState {
 	private hash(content: string): string {
 		let h = 0;
 		for (let i = 0; i < content.length; i++) {
-			h = ((h << 5) - h) + content.charCodeAt(i);
+			h = (h << 5) - h + content.charCodeAt(i);
 			h |= 0;
 		}
 		return h.toString(36);
