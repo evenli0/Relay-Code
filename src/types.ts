@@ -25,7 +25,7 @@ export interface ToolDefinition {
 		description: string;
 		parameters: Record<string, unknown>;
 	};
-	execute: (args: Record<string, unknown>) => Promise<string>;
+	execute?: (args: Record<string, unknown>) => Promise<string>;
 }
 
 /** ReAct 循环中的消息格式 */
@@ -41,7 +41,7 @@ export type ChatMessage =
 	| { role: "tool"; content: string; tool_call_id: string };
 
 /** 最大 ReAct 循环轮数 */
-export const MAX_REACT_ITERATIONS = 20;
+export const MAX_REACT_ITERATIONS = 60;
 
 /** LLM 单次调用超时（毫秒） */
 export const LLM_CALL_TIMEOUT_MS = 120_000;
