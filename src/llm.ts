@@ -2,6 +2,17 @@ import OpenAI from "openai"
 import type { ChatMessage, LLMResponse, ToolDefinition } from "./types"
 import type { ChatCompletionTool } from "openai/resources/index.mjs"
 
+/** DeepSeek 扩展字段：reasoning_content（思考链） */
+interface DeepSeekMessage {
+  content: string | null
+  reasoning_content?: string | null
+  tool_calls?: Array<{
+    id: string
+    type: "function"
+    function: { name: string; arguments: string }
+  }>
+}
+
 const DEEPSEEK_BASE_URL = "https://api.deepseek.com"
 const DEFAULT_MODEL = "deepseek-v4-flash"
 
@@ -35,8 +46,9 @@ export async function callLLM(
     const choice = res.choices[0]?.message
     if (!choice) return { content: "", tool_calls: undefined }
 
-    // DeepSeek 返回的 reasoning_content 需要回传
-    const reasoningContent = (choice as any).reasoning_content ?? null
+    // DeepSeek 返回的 reasoning_content（思考链）
+    const deepseekMsg = choice as unknown as DeepSeekMessage
+    const reasoningContent = deepseekMsg.reasoning_content ?? null
 
     return {
       content: choice.content ?? null,

@@ -62,7 +62,8 @@ export class Orchestrator {
       // 输出本轮要做什么
       const actions = parsed.map(({ tc, args }) => {
         if (tc.function.name === "dispatch") {
-          const task = (args as any)?.prompt?.task ?? ""
+          const prompt = args.prompt as Record<string, unknown> | undefined
+          const task = typeof prompt?.task === "string" ? prompt.task : ""
           return `dispatch: ${task.substring(0, 50)}`
         }
         return tc.function.name
