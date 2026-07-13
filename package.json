@@ -10,11 +10,14 @@
     "type-check": "tsc --noEmit",
     "lint": "biome check src/",
     "format": "biome check --write src/",
-    "format:check": "biome check --no-errors-on-unmatched src/"
+    "format:check": "biome check --no-errors-on-unmatched src/",
+    "prepare": "husky"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.3",
     "@types/bun": "latest",
+    "husky": "^9.1.7",
+    "lint-staged": "^17.0.8",
     "typescript": "^5.9.3"
   },
   "dependencies": {
