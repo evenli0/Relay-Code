@@ -3,10 +3,14 @@ import { appendFile } from "node:fs/promises";
 
 const MEMORY_DIR = "memory";
 
+/** 每进程唯一的会话 ID */
+const SESSION_ID = Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 6);
+
 interface DialogueEntry {
 	role: "user" | "assistant" | "system" | "tool";
 	content: string;
 	ts: string;
+	session: string;
 }
 
 /** 确保 memory/ 目录存在 */
@@ -28,7 +32,12 @@ export async function saveDialogue(
 	content: string,
 ): Promise<void> {
 	ensureDir();
-	const entry: DialogueEntry = { role, content, ts: new Date().toISOString() };
+	const entry: DialogueEntry = {
+		role,
+		content,
+		ts: new Date().toISOString(),
+		session: SESSION_ID,
+	};
 	await appendFile(getTodayFilePath(), `${JSON.stringify(entry)}\n`, "utf-8");
 }
 

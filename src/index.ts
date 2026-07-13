@@ -1,4 +1,5 @@
 import { feedbackLine } from "./feedback";
+import { saveDialogue } from "./memory";
 import { Orchestrator } from "./orchestrator";
 
 const VERSION = "0.1.0";
@@ -72,6 +73,7 @@ async function main() {
 		const stdin = await Bun.stdin.text();
 		if (stdin.trim()) {
 			const orchestrator = new Orchestrator();
+			await saveDialogue("user", stdin.trim());
 			const result = await orchestrator.runReAct(stdin.trim());
 			console.log(result);
 			return;
@@ -80,6 +82,7 @@ async function main() {
 
 	// Normal mode
 	const orchestrator = new Orchestrator();
+	await saveDialogue("user", arg);
 	const result = await orchestrator.runReAct(arg);
 	console.log(result);
 }
