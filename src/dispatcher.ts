@@ -151,11 +151,23 @@ export class SubAgent {
 			parsed.forEach(({ tc }) => {
 				feedbackLine(`  [子Agent] ⊜ ${tc.function.name}`);
 			});
+			let emptyResultRounds = 0;
 			const results = await Promise.all(
-				parsed.map(({ tc, args }) =>
+					parsed.map(({ tc, args }) =>
 					this.executor.executeToolCall(tc.function.name, args, this.cwd),
 				),
 			);
+
+			// 空结果检测：全部为空时计数
+			const allEmpty = results.every(r => !r || r.trim().length === 0);
+			if (allEmpty && (!response.content || response.content.trim().length === 0)) {
+				emptyResultRounds++;
+				if (emptyResultRounds >= 2) {
+					return { status: "error", output: "子Agent 连续 2 轮返回空结果，提前终止" };
+				}
+			} else {
+				emptyResultRounds = 0;
+			}
 
 			for (let ti = 0; ti < parsed.length; ti++) {
 				const entry = parsed[ti];
