@@ -1,9 +1,7 @@
 import type { ChatMessage, ToolCall } from "./types";
 
 /** 解析工具调用的参数 JSON */
-export function parseToolArgs(
-	tc: ToolCall,
-): { args: Record<string, unknown> } {
+export function parseToolArgs(tc: ToolCall): { args: Record<string, unknown> } {
 	let args: Record<string, unknown> = {};
 	try {
 		args = JSON.parse(tc.function.arguments);
