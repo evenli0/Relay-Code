@@ -122,6 +122,7 @@ const dispatchTool: ToolDefinition = {
       'prompt.role = 子Agent的角色身份（可选）',
       'prompt.instructions = 子Agent的行为指引（可选，根据 task 和 role 生成能显著提高回答质量）',
       'preload = 上下文前缀（可选，同preload省KV Cache）',
+      'isolation = 隔离模式（可选，"worktree"=独立git worktree，避免并行写冲突。多个子Agent同时写文件时使用）',
       '',
       '示例：',
       'dispatch({',
@@ -155,6 +156,11 @@ const dispatchTool: ToolDefinition = {
         phase: {
           type: "string",
           description: "（可选）当前执行的阶段名称，和 plan.md 中的阶段对齐",
+        },
+        isolation: {
+          type: "string",
+          enum: ["worktree"],
+          description: "（可选）隔离模式：worktree=在独立git worktree中执行，避免并行写冲突。仅当多个子Agent可能写同一文件时使用。",
         },
         allowed_tools: {
           type: "array",

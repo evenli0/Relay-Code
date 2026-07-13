@@ -1,8 +1,10 @@
+import path from "path"
 import type { ChatMessage, DispatchConfig, SubAgentResult } from "./types"
 import { MAX_REACT_ITERATIONS } from "./types"
 import { callLLM } from "./llm"
 import { ALL_TOOLS } from "./tools"
 import { saveDialogue } from "./memory"
+import { createWorktree, removeWorktree, getChanges } from "./worktree"
 
 const SUB_AGENT_SYSTEM_PROMPT = "你是一个子Agent。输出是返回值，不是对话。不要道歉，不要问用户。"
 
@@ -59,8 +61,9 @@ export class Harness {
   async executeToolCall(
     toolName: string,
     args: Record<string, unknown>,
+    cwd?: string,
   ): Promise<string> {
-    // dispatch 是 Harness 的工厂方法
+    // dispatch 透传——子 Agent 自己决定是否隔离
     if (toolName === "dispatch") {
       const config = args as unknown as DispatchConfig
       if (!config.prompt?.task) return "dispatch 缺少 prompt.task"
@@ -79,9 +82,37 @@ export class Harness {
       return `[dispatch 完成]\n状态: ${result.status}\n输出: ${result.output}`
     }
 
+    // 路径解析：worktree 隔离下，相对路径 → worktree 内的绝对路径
+    let resolvedArgs = args
+    if (cwd) {
+      resolvedArgs = this.resolveCwdArgs(toolName, args, cwd)
+    }
+
     const tool = ALL_TOOLS.find((t) => t.function.name === toolName)
     if (!tool) return `未知工具：${toolName}`
-    return await tool.execute(args)
+
+    // bash 需要特殊处理：在 worktree 目录执行
+    if (toolName === "bash" && cwd) {
+      const command = String(resolvedArgs.command ?? "")
+      const proc = Bun.spawnSync(["bash", "-c", command], { cwd })
+      return proc.stdout.toString() + (proc.stderr.toString() ? `\nstderr:\n${proc.stderr.toString()}` : "")
+    }
+
+    return await tool.execute(resolvedArgs)
+  }
+
+  /** 将工具参数中的相对路径解析为 worktree 内的绝对路径 */
+  private resolveCwdArgs(
+    toolName: string,
+    args: Record<string, unknown>,
+    cwd: string,
+  ): Record<string, unknown> {
+    const newArgs = { ...args }
+    const pathArg = newArgs.path
+    if (typeof pathArg === "string" && !path.isAbsolute(pathArg)) {
+      newArgs.path = path.resolve(cwd, pathArg)
+    }
+    return newArgs
   }
 
   /**
@@ -152,11 +183,32 @@ export class Harness {
    * 拼装消息 → 创建子Agent → 启动ReAct → 返回完整回执
    */
   async dispatch(config: DispatchConfig): Promise<SubAgentResult> {
+    // worktree 隔离
+    let worktreePath: string | undefined
+    if (config.isolation === "worktree") {
+      const slug = `dispatch-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`
+      try {
+        worktreePath = await createWorktree(slug)
+      } catch (e) {
+        return { status: "error", output: `创建 worktree 失败: ${e}` }
+      }
+    }
+
     const messages = await this.assembleMessages(config)
     const allowedTools = config.allowed_tools ?? ALL_TOOLS.map((t) => t.function.name)
 
-    const subAgent = new SubAgent(messages, allowedTools, this)
+    const subAgent = new SubAgent(messages, allowedTools, this, worktreePath)
     const result = await subAgent.run()
+
+    // worktree 变更检测
+    if (worktreePath) {
+      const changes = await getChanges(worktreePath)
+      if (changes.length > 0) {
+        result.output += `\n[worktree 变更] 路径: ${worktreePath}\n修改了 ${changes.length} 个文件: ${changes.join(", ")}`
+      } else {
+        await removeWorktree(worktreePath)
+      }
+    }
 
     // 如果指定了 responseSchema，尝试解析结构化 JSON
     if (config.responseSchema && result.output) {
@@ -193,6 +245,7 @@ export class SubAgent {
     private messages: ChatMessage[],
     private allowedTools: string[],
     private harness: Harness,
+    private cwd?: string,
   ) {}
 
   async run(): Promise<SubAgentResult> {
@@ -221,10 +274,10 @@ export class SubAgent {
         return { tc, args }
       })
 
-      // 并行执行所有工具调用
+      // 并行执行所有工具调用（如有 cwd 则透传给子Agent）
       const results = await Promise.all(
         parsed.map(({ tc, args }) =>
-          this.harness.executeToolCall(tc.function.name, args),
+          this.harness.executeToolCall(tc.function.name, args, this.cwd),
         ),
       )
 

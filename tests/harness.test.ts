@@ -12,12 +12,26 @@ mock.module("../src/llm", () => ({
   callLLM: mockCallLLM,
 }))
 
+// Mock worktree 模块
+const mockCreateWorktree = mock(async (slug: string) => `/tmp/test-wt-${slug}`)
+const mockRemoveWorktree = mock(async (_path: string) => {})
+const mockGetChanges = mock(async (_path: string): Promise<string[]> => [])
+
+mock.module("../src/worktree", () => ({
+  createWorktree: mockCreateWorktree,
+  removeWorktree: mockRemoveWorktree,
+  getChanges: mockGetChanges,
+}))
+
 import { Harness } from "../src/harness"
 import type { ChatMessage } from "../src/types"
 
 beforeEach(() => {
   responseQueue.length = 0
   mockCallLLM.mockClear()
+  mockCreateWorktree.mockClear()
+  mockRemoveWorktree.mockClear()
+  mockGetChanges.mockClear()
 })
 
 // =============================================
@@ -282,4 +296,85 @@ test("子Agent超出最大轮数 → 返回 error", async () => {
 
   expect(result.status).toBe("error")
   expect(result.output).toContain("未在限定轮次内完成")
+})
+
+// =============================================
+// worktree 隔离测试
+// =============================================
+
+test("worktree isolation: 启用时创建 worktree 并透传 cwd，无变更自动清理", async () => {
+  // 子Agent 直接返回文本（无工具调用）
+  responseQueue.push({ content: '{"result": "ok"}', tool_calls: undefined })
+
+  const harness = new Harness()
+  const result = await harness.dispatch({
+    prompt: { task: "测试 worktree 隔离" },
+    responseSchema: { type: "object", properties: { result: { type: "string" } } },
+    isolation: "worktree",
+  })
+
+  expect(result.status).toBe("completed")
+  expect(mockCreateWorktree).toHaveBeenCalledTimes(1)
+
+  const slug = mockCreateWorktree.mock.calls[0]?.[0] as string
+  expect(slug).toContain("dispatch-")
+
+  // 无变更 → 自动清理
+  expect(mockGetChanges).toHaveBeenCalledTimes(1)
+  expect(mockRemoveWorktree).toHaveBeenCalledTimes(1)
+})
+
+test("worktree isolation: 有变更时保留 worktree 并报告路径和变更文件", async () => {
+  mockGetChanges.mockImplementation(async (_path) => ["modified.txt", "new_file.ts"])
+
+  responseQueue.push({ content: '{"result": "done"}', tool_calls: undefined })
+
+  const harness = new Harness()
+  const result = await harness.dispatch({
+    prompt: { task: "修改文件" },
+    responseSchema: { type: "object", properties: { result: { type: "string" } } },
+    isolation: "worktree",
+  })
+
+  expect(mockCreateWorktree).toHaveBeenCalledTimes(1)
+  expect(mockGetChanges).toHaveBeenCalledTimes(1)
+  // 有变更 → 不清理
+  expect(mockRemoveWorktree).not.toHaveBeenCalled()
+  // 结果中包含变更信息
+  expect(result.output).toContain("[worktree 变更]")
+  expect(result.output).toContain("modified.txt")
+  expect(result.output).toContain("new_file.ts")
+})
+
+test("worktree isolation: createWorktree 失败时返回 error", async () => {
+  mockCreateWorktree.mockImplementation(async (_slug: string) => { throw new Error("git 失败") })
+
+  const harness = new Harness()
+  const result = await harness.dispatch({
+    prompt: { task: "失败场景" },
+    responseSchema: { type: "object", properties: { result: { type: "string" } } },
+    isolation: "worktree",
+  })
+
+  expect(result.status).toBe("error")
+  expect(result.output).toContain("创建 worktree 失败")
+  // createWorktree 失败 → 后续不会调用
+  expect(mockGetChanges).not.toHaveBeenCalled()
+  expect(mockRemoveWorktree).not.toHaveBeenCalled()
+})
+
+test("worktree isolation: 不启用 isolation 时不影响正常 dispatch", async () => {
+  responseQueue.push({ content: '{"result": "normal"}', tool_calls: undefined })
+
+  const harness = new Harness()
+  const result = await harness.dispatch({
+    prompt: { task: "正常任务" },
+    responseSchema: { type: "object", properties: { result: { type: "string" } } },
+  })
+
+  expect(result.status).toBe("completed")
+  // 不涉及 worktree
+  expect(mockCreateWorktree).not.toHaveBeenCalled()
+  expect(mockRemoveWorktree).not.toHaveBeenCalled()
+  expect(mockGetChanges).not.toHaveBeenCalled()
 })
