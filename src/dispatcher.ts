@@ -36,7 +36,14 @@ export async function dispatch(
 	const allowedTools =
 		config.allowed_tools ?? ALL_TOOLS.map((t) => t.function.name);
 
-	const subAgent = new SubAgent(messages, allowedTools, executor, worktreePath);
+	const subAgent = new SubAgent(
+		messages,
+		allowedTools,
+		executor,
+		worktreePath,
+		config.max_rounds,
+		config.max_time_ms,
+	);
 	const result = await subAgent.run();
 
 	// worktree 变更检测
@@ -79,14 +86,20 @@ export class SubAgent {
 		private allowedTools: string[],
 		private executor: ToolExecutor,
 		private cwd?: string,
+		private maxRounds?: number,
+		private maxTimeMs?: number,
 	) {}
 
 	async run(): Promise<SubAgentResult> {
+		const subStart = Date.now();
+		let llmCalls = 0;
+		let toolsUsed = 0;
 		const availableTools = ALL_TOOLS.filter((t) =>
 			this.allowedTools.includes(t.function.name),
 		);
 
-		for (let i = 0; i < MAX_REACT_ITERATIONS; i++) {
+		const iterLimit = this.maxRounds ?? 5;
+		for (let i = 0; i < Math.min(iterLimit, MAX_REACT_ITERATIONS); i++) {
 			const roundStart = Date.now();
 			feedbackLine(
 				`  [子Agent] 轮次 ${i + 1}/${MAX_REACT_ITERATIONS} (${((Date.now() - roundStart) / 1000).toFixed(1)}s)`,
@@ -101,6 +114,13 @@ export class SubAgent {
 			const timeout = setTimeout(() => controller.abort(), LLM_CALL_TIMEOUT_MS);
 			let response: LLMResponse;
 			try {
+				if (this.maxTimeMs && Date.now() - subStart > this.maxTimeMs) {
+					return {
+						status: "error",
+						output: `子Agent 总执行时间超过 ${this.maxTimeMs}ms 限制`,
+					};
+				}
+				llmCalls++;
 				response = await callLLM(this.messages, availableTools, {
 					signal: controller.signal,
 				});
@@ -148,22 +168,29 @@ export class SubAgent {
 				return { tc, args };
 			});
 
+			toolsUsed += parsed.length;
 			parsed.forEach(({ tc }) => {
 				feedbackLine(`  [子Agent] ⊜ ${tc.function.name}`);
 			});
 			let emptyResultRounds = 0;
 			const results = await Promise.all(
-					parsed.map(({ tc, args }) =>
+				parsed.map(({ tc, args }) =>
 					this.executor.executeToolCall(tc.function.name, args, this.cwd),
 				),
 			);
 
 			// 空结果检测：全部为空时计数
-			const allEmpty = results.every(r => !r || r.trim().length === 0);
-			if (allEmpty && (!response.content || response.content.trim().length === 0)) {
+			const allEmpty = results.every((r) => !r || r.trim().length === 0);
+			if (
+				allEmpty &&
+				(!response.content || response.content.trim().length === 0)
+			) {
 				emptyResultRounds++;
 				if (emptyResultRounds >= 2) {
-					return { status: "error", output: "子Agent 连续 2 轮返回空结果，提前终止" };
+					return {
+						status: "error",
+						output: "子Agent 连续 2 轮返回空结果，提前终止",
+					};
 				}
 			} else {
 				emptyResultRounds = 0;

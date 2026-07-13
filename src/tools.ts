@@ -183,7 +183,8 @@ const dispatchTool: ToolDefinition = {
 				},
 				exploratory: {
 					type: "boolean",
-					description: "（可选）探索模式：true=跳过 plan.md 检查，用于非计划的探索性任务",
+					description:
+						"（可选）探索模式：true=跳过 plan.md 检查，用于非计划的探索性任务",
 				},
 				isolation: {
 					type: "string",
