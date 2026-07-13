@@ -22,8 +22,8 @@ export class ToolExecutor {
 			const task = String(args.task ?? "").trim();
 			const role = String(args.role ?? "").trim();
 			const format = String(args.format ?? "").trim();
-			if (!task || task.length < 10)
-				return "dispatch 任务描述过短（<10字符），请重写 task 包含具体上下文";
+			if (!task || task.length < 4)
+				return "dispatch 任务描述过短，请重写 task 包含具体上下文";
 			const planFile = Bun.file("plan.md");
 			if (!(await planFile.exists())) {
 				if (!args.exploratory)
