@@ -5,17 +5,20 @@
 **A single-agent coding assistant with ReAct-driven semantic orchestration**
 
 [![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.9-blue)](https://www.typescriptlang.org/)
-[![Bun](https://img.shields.io/badge/Bun-1.3-black)](https://bun.sh)
 [![CI](https://github.com/evenli0/Relay-Code/actions/workflows/ci.yml/badge.svg)](https://github.com/evenli0/Relay-Code/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/evenli0/Relay-Code/actions/workflows/ci.yml/badge.svg?job=codeql)](https://github.com/evenli0/Relay-Code/actions/workflows/ci.yml)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.9-strict?logo=typescript)](https://www.typescriptlang.org/)
+[![Bun](https://img.shields.io/badge/Bun-1.3-black?logo=bun)](https://bun.sh)
+[![Tests](https://img.shields.io/badge/tests-43%20passing-2ea043)](https://github.com/evenli0/Relay-Code/actions)
+[![Last Commit](https://img.shields.io/github/last-commit/evenli0/Relay-Code)](https://github.com/evenli0/Relay-Code)
 
 [English](README.md) | [中文](README.zh-CN.md)
 
 </div>
 
----
+Relay Code is an open-source, model-agnostic CLI coding agent that orchestrates sub-agents through ReAct loops and dynamic plan files. Unlike rigid workflow scripts, Relay Code writes a `plan.md` at runtime and dispatches sub-agents adaptively — striking a balance between flexibility and reliability.
 
-Relay Code is a **single-agent coding assistant** that uses ReAct loops and semantic orchestration to coordinate sub-agents. Unlike rigid workflow scripts, Relay Code writes a **plan file** and dynamically dispatches sub-agents based on the plan's phases, enabling adaptive task decomposition.
+Built with **TypeScript** (strict mode), powered by **Bun**, and provider-agnostic by design.
 
 ---
 
@@ -58,13 +61,15 @@ flowchart TB
 | Component | File | Responsibility |
 |---|---|---|
 | **Orchestrator** | `src/orchestrator.ts` | Main ReAct loop, plan injection, tool dispatch |
-| **PlanManager** | `src/plan-manager.ts` | Reads and injects plan.md into context |
+| **Harness** | `src/harness.ts` | Facade combining PlanManager + ToolExecutor + Dispatcher |
+| **PlanManager** | `src/plan-manager.ts` | Reads plan.md and injects into LLM context |
 | **ToolExecutor** | `src/tool-executor.ts` | Routes tool calls, resolves worktree paths |
-| **MessageAssembler** | `src/message-assembler.ts` | Builds sub-agent chat messages from config |
-| **Dispatcher** | `src/dispatcher.ts` | Creates sub-agents and runs the orchestration |
-| **SubAgent** | `src/dispatcher.ts` | One-shot ReAct executor with isolated context |
-| **Tool Definitions** | `src/tools.ts` | read, write, grep, bash, dispatch |
-| **LLM Client** | `src/llm.ts` | DeepSeek API wrapper with timeout and error handling |
+| **Dispatcher** | `src/dispatcher.ts` | Creates and manages SubAgent lifecycle |
+| **SubAgent** | `src/dispatcher.ts` | Isolated ReAct executor with structured output |
+| **MessageAssembler** | `src/message-assembler.ts` | Builds sub-agent messages from dispatch config |
+| **Tools** | `src/tools.ts` | Tool definitions — read, write, grep, bash, dispatch |
+| **LLM Client** | `src/llm.ts` | DeepSeek/OpenAI-compatible API wrapper |
+| **Errors** | `src/errors.ts` | Unified error handling (unwrapError) |
 
 ---
 
@@ -72,8 +77,8 @@ flowchart TB
 
 ### Prerequisites
 
-- **Bun** 1.3+ ([install](https://bun.sh))
-- **DeepSeek API key** — [get one here](https://platform.deepseek.com)
+- [Bun](https://bun.sh) 1.3+
+- DeepSeek API key — [get one free](https://platform.deepseek.com)
 
 ### Setup
 
@@ -81,41 +86,29 @@ flowchart TB
 git clone https://github.com/evenli0/Relay-Code.git
 cd relay-code
 bun install
-```
-
-### Configuration
-
-```bash
 export DEEPSEEK_API_KEY="sk-..."
-export DEEPSEEK_MODEL="deepseek-v4-flash"   # Optional (default)
 ```
 
 ### Usage
 
 ```bash
-# Run the agent with a task
+# Quick analysis
 bun run src/index.ts "analyze the file structure of this project"
 
-# Development mode (watch mode)
-bun run dev
-```
-
-### Examples
-
-```bash
-# Single task
-bun run src/index.ts "find all functions that handle error logging"
-
-# Workflow orchestration (creates plan.md automatically)
+# Multi-agent workflow
 bun run src/index.ts "evaluate the code quality of this project using a multi-agent workflow"
+
+# Development mode (auto-reload)
+bun run dev
 ```
 
 ### Testing
 
 ```bash
-bun test                          # Unit tests (43 tests)
-bun test tests/integration/       # Integration tests (git worktrees)
-bun run type-check                # TypeScript type checking
+bun test                    # Unit tests — 43 tests, 0 failures
+bun run test:integration    # Integration tests (git worktrees)
+bun run type-check          # TypeScript strict type checking
+bun run test:coverage       # Test coverage report
 ```
 
 ---
@@ -124,7 +117,7 @@ bun run type-check                # TypeScript type checking
 
 ### 🧩 Plan-Driven Workflow
 
-Write a `plan.md` — the harness automatically injects it into context, guiding the agent through structured phases:
+Write a lightweight `plan.md` — the harness auto-injects it into context. The agent follows the plan's phases and uses `dispatch` to parallelize work.
 
 ```markdown
 # Plan: Security Audit
@@ -135,7 +128,7 @@ Write a `plan.md` — the harness automatically injects it into context, guiding
 
 ### 🔀 Parallel Dispatch
 
-Dispatch multiple sub-agents in a single ReAct turn, each with isolated context:
+Spin up multiple sub-agents in a single ReAct turn. Each runs in its own context:
 
 ```typescript
 dispatch({
@@ -156,26 +149,54 @@ dispatch({
 
 ### 🛡️ Worktree Isolation
 
-Sub-agents can run in isolated git worktrees, enabling safe parallel file writes:
+Sub-agents can run in isolated git worktrees — safe parallel file modification with zero conflicts:
 
 ```typescript
 dispatch({
   isolation: "worktree",
-  prompt: { task: "refactor multiple files" }
+  prompt: { task: "refactor multiple files across the project" }
 })
 ```
 
 ### 📊 Structured Results
 
-Every sub-agent returns structured JSON with standard fields:
+Every sub-agent returns structured JSON, not loose text:
 
 ```json
 {
-  "keyFindings": ["X vulnerability found in auth module"],
-  "decisions": ["refactor auth middleware"],
-  "summary": "Auth module requires immediate attention — score: 4/10"
+  "keyFindings": ["Injection vulnerability in auth module"],
+  "decisions": ["Rewrite input sanitization"],
+  "summary": "Auth module: score 4/10 — immediate action required"
 }
 ```
+
+---
+
+## Why Relay Code?
+
+| Dimension | Relay Code | Claude Code Workflow | Manual ReAct |
+|---|---|---|---|
+| **Flexibility** | High — plan adjusts dynamically | Low — script is fixed | High — no constraints |
+| **Reliability** | Medium — LLM-guided execution | High — deterministic | Low — no structure |
+| **Setup cost** | Low — one prompt | High — JS boilerplate | None |
+| **Parallelism** | Built-in dispatch | Agent tool | Manual |
+| **Sub-agent isolation** | Git worktree support | Worktree isolation | None |
+| **Result structure** | JSON schema enforced | Free-form text | Free-form text |
+
+Relay Code is designed for developers who want structured, auditable AI assistance without being locked into a specific LLM provider or IDE.
+
+---
+
+## Project Health
+
+| Badge | Status |
+|---|---|
+| **CI** | [![CI](https://github.com/evenli0/Relay-Code/actions/workflows/ci.yml/badge.svg)](https://github.com/evenli0/Relay-Code/actions/workflows/ci.yml) |
+| **CodeQL** | [![CodeQL](https://github.com/evenli0/Relay-Code/actions/workflows/ci.yml/badge.svg?job=codeql)](https://github.com/evenli0/Relay-Code/actions/workflows/ci.yml) |
+| **Dependencies** | [![Dependabot](https://img.shields.io/badge/dependabot-active-2ea043)](.github/dependabot.yml) |
+| **Lint** | Biome (strict) |
+| **TypeScript** | Strict mode with noUncheckedIndexedAccess |
+| **Pre-commit** | Husky + lint-staged (Biome check) |
 
 ---
 
@@ -191,25 +212,41 @@ relay-code/
 │   ├── message-assembler.ts  # Sub-agent message builder
 │   ├── tool-executor.ts      # Tool routing + worktree isolation
 │   ├── dispatcher.ts         # Dispatch + SubAgent
+│   ├── react-loop.ts         # Shared ReAct loop utilities
 │   ├── tools.ts              # Tool definitions
-│   ├── llm.ts                # DeepSeek API client
+│   ├── llm.ts                # DeepSeek/OpenAI API client
 │   ├── types.ts              # Type definitions
 │   ├── memory.ts             # Dialogue persistence
+│   ├── errors.ts             # Unified error handling
 │   ├── prompts.ts            # System prompt builder
 │   └── worktree.ts           # Git worktree management
-├── tests/
-│   ├── harness.test.ts       # Harness + dispatch tests
-│   ├── react.test.ts         # ReAct loop tests
-│   ├── memory.test.ts        # Memory tests
-│   ├── tools.test.ts         # Tool function tests
-│   ├── helpers/              # Test sandbox utilities
-│   └── integration/          # Real git worktree tests
-├── .github/workflows/ci.yml  # CI pipeline
-├── biome.json                # Lint / format configuration
-├── CHANGELOG.md
-├── LICENSE
+├── tests/                    # 43 unit tests
+│   ├── harness.test.ts
+│   ├── react.test.ts
+│   ├── memory.test.ts
+│   ├── tools.test.ts
+│   ├── helpers/
+│   └── integration/
+├── .github/
+│   ├── workflows/ci.yml      # CI with CodeQL
+│   ├── dependabot.yml        # Auto dependency updates
+│   ├── ISSUE_TEMPLATE/
+│   └── PULL_REQUEST_TEMPLATE.md
+├── biome.json                # Lint / format config
+├── CHANGELOG.md              # Keep a Changelog
+├── CONTRIBUTING.md           # Contribution guide
+├── CODE_OF_CONDUCT.md
+├── SECURITY.md
+├── ROADMAP.md                # Project roadmap
+├── LICENSE (MIT)
 └── README.md
 ```
+
+---
+
+## Contributing
+
+We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines, [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) for community standards, and [ROADMAP.md](ROADMAP.md) for upcoming plans.
 
 ---
 
@@ -223,24 +260,6 @@ relay-code/
 
 ---
 
-## Why Relay Code?
-
-| Approach | Flexibility | Reliability | Setup Cost |
-|---|---|---|---|
-| **Relay Code** (plan + dispatch) | High — dynamic plan adjustment | Medium — LLM-driven | Low — one prompt |
-| **Claude Code Workflow** (JS script) | Low — fixed script | High — deterministic | High — JS boilerplate |
-| **Manual ReAct** | High — anything goes | Low — no structure | None |
-
-Relay Code strikes a balance: use a plan as a lightweight script, let the LLM adjust it dynamically when things go wrong.
-
----
-
 ## License
 
-[MIT](LICENSE)
-
----
-
-## Status
-
-![Last Commit](https://img.shields.io/github/last-commit/evenli0/Relay-Code)
+[MIT](LICENSE) — free for personal and commercial use.
