@@ -61,6 +61,9 @@ export interface DispatchConfig {
 	responseSchema: Record<string, unknown>;
 	/** 可选：当前阶段名称，和 plan.md 对齐 */
 	phase?: string;
+	/** 探索模式：跳过 plan.md 检查，用于非计划的探索性任务 */
+	exploratory?: boolean;
+
 	/** worktree 隔离执行：在独立 git worktree 中运行，避免并行写冲突。仅当多个子Agent 可能写同一文件时需要。 */
 	isolation?: "worktree";
 	/** 可选：计划上下文（已弃用，改用 plan.md 文件） */
