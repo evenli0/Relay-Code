@@ -198,10 +198,6 @@ const dispatchTool: ToolDefinition = {
 			},
 		},
 	},
-	// execute 是后备实现在走Harness时不会被用到
-	async execute() {
-		return "dispatch 需要经过 Harness 执行";
-	},
 };
 
 /** 所有可用的工具定义 */
@@ -212,9 +208,6 @@ export const ALL_TOOLS: ToolDefinition[] = [
 	bashTool,
 	dispatchTool,
 ];
-
-/** 兼容：编排Agent默认工具列表 */
-export const ORCHESTRATOR_TOOLS = ALL_TOOLS;
 
 /** 根据工具名称执行（不走权限检查，直接调用） */
 export async function executeTool(
