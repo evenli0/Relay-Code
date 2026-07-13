@@ -9,6 +9,15 @@ test_*.json
 # 审查报告输出
 审查报告*.md
 
+# 评估报告
+评估报告*.md
+
+# 临时 plan 文件
+plan.md
+
+# Worktree 隔离目录
+.relay/
+
 # IDE
 .vscode/
 .idea/
