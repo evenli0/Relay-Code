@@ -32,7 +32,7 @@ export class ToolExecutor {
 			const config: DispatchConfig = {
 				prompt: {
 					task,
-					role: role || undefined,
+					role: role || void 0,
 					instructions: role ? `你是${role}。${task}` : task,
 				},
 				responseSchema: format
@@ -48,10 +48,11 @@ export class ToolExecutor {
 			};
 			const result = await this.dispatchFn(config);
 			if (result.structured) {
-				return `[dispatch完成]状态: ${result.status}结构化结果:${JSON.stringify(result.structured, null, 2)}`;
+				return `[dispatch 完成] 状态: ${result.status} 结构化结果: ${JSON.stringify(result.structured, null, 2)}`;
 			}
-			return `[dispatch完成]状态: ${result.status}输出: ${result.output}`;
-		} // 路径解析：worktree 隔离下，相对路径 → worktree 内的绝对路径
+			return `[dispatch 完成] 状态: ${result.status} 输出: ${result.output}`;
+		}
+		// 路径解析：worktree 隔离下，相对路径 → worktree 内的绝对路径
 		let resolvedArgs = args;
 		if (cwd) {
 			resolvedArgs = this.resolveCwdArgs(toolName, args, cwd);
