@@ -4,7 +4,7 @@ import { appendFile } from "node:fs/promises";
 const MEMORY_DIR = "memory";
 
 interface DialogueEntry {
-	role: "user" | "assistant";
+	role: "user" | "assistant" | "system" | "tool";
 	content: string;
 	ts: string;
 }
@@ -24,7 +24,7 @@ function getTodayFilePath(): string {
 
 /** 追加一条对话记录到今日文件（原子追加，无竞争条件） */
 export async function saveDialogue(
-	role: "user" | "assistant",
+	role: "user" | "assistant" | "system" | "tool",
 	content: string,
 ): Promise<void> {
 	ensureDir();

@@ -1,4 +1,5 @@
 import type { ToolDefinition } from "./types";
+import { unwrapError } from "./errors";
 
 /** read 工具：读取本地文件 */
 const readTool: ToolDefinition = {
@@ -21,8 +22,8 @@ const readTool: ToolDefinition = {
 		if (!exists) return `错误：文件 ${path} 不存在`;
 		try {
 			return await file.text();
-		} catch (e: any) {
-			return `错误：读取文件 ${path} 失败 — ${e?.message ?? e ?? "未知错误"}`;
+		} catch (e: unknown) {
+			return `错误：读取文件 ${path} 失败 — ${unwrapError(e).message ?? e ?? "未知错误"}`;
 		}
 	},
 };
@@ -48,8 +49,8 @@ const writeTool: ToolDefinition = {
 		try {
 			await Bun.write(path, content);
 			return `文件 ${path} 写入成功（${content.length} 字符）`;
-		} catch (e: any) {
-			return `错误：写入文件 ${path} 失败 — ${e?.message ?? e ?? "未知错误"}`;
+		} catch (e: unknown) {
+			return `错误：写入文件 ${path} 失败 — ${unwrapError(e).message ?? e ?? "未知错误"}`;
 		}
 	},
 };
@@ -216,5 +217,6 @@ export async function executeTool(
 ): Promise<string> {
 	const tool = ALL_TOOLS.find((t) => t.function.name === toolName);
 	if (!tool) return `错误：未知工具 ${toolName}`;
+	if (!tool.execute) return `错误：工具 ${toolName} 无法执行`;
 	return await tool.execute(args);
 }

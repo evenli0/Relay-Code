@@ -53,12 +53,11 @@ export class ToolExecutor {
 			const proc = Bun.spawnSync(["bash", "-c", command], { cwd });
 			return (
 				proc.stdout.toString() +
-				(proc.stderr.toString()
-					? `\nstderr:\n${proc.stderr.toString()}`
-					: "")
+				(proc.stderr.toString() ? `\nstderr:\n${proc.stderr.toString()}` : "")
 			);
 		}
 
+		if (!tool.execute) return `错误：工具 ${toolName} 无法执行`;
 		return await tool.execute(resolvedArgs);
 	}
 
