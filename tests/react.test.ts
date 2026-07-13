@@ -124,7 +124,7 @@ test("多条工具调用 → 顺序执行 → 退出", async () => {
 // -----------------------------------------------
 test("超出最大ReAct轮数 → 返回超时消息", async () => {
   // LLM 一直返回工具调用，永不返回文本
-  for (let i = 0; i < 22; i++) {
+  for (let i = 0; i < 65; i++) {
     responseQueue.push({
       content: null,
       tool_calls: [
