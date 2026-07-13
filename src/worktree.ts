@@ -10,7 +10,7 @@ function getWorktreeDir(): string {
 
 /** 执行 git 命令，返回 stdout，失败抛错 */
 function git(args: string[], cwd?: string): string {
-  const proc = Bun.spawnSync(["bash", "-c", `git ${args.map(a => `"${a}"`).join(" ")}`], { cwd })
+  const proc = Bun.spawnSync(["git", ...args], { cwd })
   if (proc.exitCode !== 0) {
     throw new Error(`git 失败: ${proc.stderr.toString().trim() || proc.stdout.toString().trim()}`)
   }
