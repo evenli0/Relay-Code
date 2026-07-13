@@ -122,6 +122,13 @@ const dispatchTool: ToolDefinition = {
       'prompt.role = 子Agent的角色身份（可选）',
       'prompt.instructions = 子Agent的行为指引（可选，根据 task 和 role 生成能显著提高回答质量）',
       'preload = 上下文前缀（可选，同preload省KV Cache）',
+      '',
+      '示例：',
+      'dispatch({',
+      '  preload: ["math.ts"],',
+      '  prompt: { task: "审查安全性", role: "安全审计员", instructions: "你是一名资深安全审计员..." },',
+      '  responseSchema: { type: "object", properties: { score: { type: "number" }, findings: { type: "array" } } }',
+      '})',
     ].join("\n"),
     parameters: {
       type: "object",
