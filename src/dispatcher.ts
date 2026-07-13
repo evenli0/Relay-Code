@@ -92,13 +92,13 @@ export class SubAgent {
 
 	async run(): Promise<SubAgentResult> {
 		const subStart = Date.now();
-		let llmCalls = 0;
-		let toolsUsed = 0;
+		let _llmCalls = 0;
+		let _toolsUsed = 0;
 		const availableTools = ALL_TOOLS.filter((t) =>
 			this.allowedTools.includes(t.function.name),
 		);
 
-		const iterLimit = this.maxRounds ?? 5;
+		const iterLimit = this.maxRounds ?? 30;
 		for (let i = 0; i < Math.min(iterLimit, MAX_REACT_ITERATIONS); i++) {
 			const roundStart = Date.now();
 			feedbackLine(
@@ -120,7 +120,7 @@ export class SubAgent {
 						output: `子Agent 总执行时间超过 ${this.maxTimeMs}ms 限制`,
 					};
 				}
-				llmCalls++;
+				_llmCalls++;
 				response = await callLLM(this.messages, availableTools, {
 					signal: controller.signal,
 				});
@@ -168,7 +168,7 @@ export class SubAgent {
 				return { tc, args };
 			});
 
-			toolsUsed += parsed.length;
+			_toolsUsed += parsed.length;
 			parsed.forEach(({ tc }) => {
 				feedbackLine(`  [子Agent] ⊜ ${tc.function.name}`);
 			});

@@ -33,7 +33,7 @@ export class PlanState {
 			if (phaseMatch) {
 				if (currentPhase) this.phases.push(currentPhase);
 				currentPhase = {
-					name: phaseMatch[1]!.trim(),
+					name: phaseMatch[1]?.trim() ?? "",
 					description: "",
 					status: line.includes("✅")
 						? "completed"
@@ -47,7 +47,7 @@ export class PlanState {
 			if (currentPhase) {
 				const taskMatch = line.match(/^\s*-\s*\[([ x])\]\s*(.+)/);
 				if (taskMatch) {
-					currentPhase.description += `${taskMatch[2]!.trim()} `;
+					currentPhase.description += `${taskMatch[2]?.trim() ?? ""} `;
 				}
 			}
 		}
@@ -71,28 +71,23 @@ export class PlanState {
 	render(): string {
 		if (this.phases.length === 0) return "";
 		let result = "";
-		for (let i = 0; i < this.phases.length; i++) {
-			const p = this.phases[i]!;
+		for (const p of this.phases) {
 			const marker =
-				p.status === "completed"
-					? "✅"
-					: p.status === "failed"
-						? "❌"
-						: i === this.currentIndex
-							? "▶️"
-							: "⬜";
+				p.status === "completed" ? "✅" : p.status === "failed" ? "❌" : "⬜";
 			result += `${marker} ${p.name}${p.description ? `：${p.description}` : ""}\n`;
 		}
 		return result;
 	}
 
 	advance(): void {
+		if (this.currentIndex >= this.phases.length) return;
+		const phase = this.phases[this.currentIndex];
+		if (!phase) return;
+		phase.status = "completed";
+		this.currentIndex++;
 		if (this.currentIndex < this.phases.length) {
-			this.phases[this.currentIndex]!.status = "completed";
-			this.currentIndex++;
-			if (this.currentIndex < this.phases.length) {
-				this.phases[this.currentIndex]!.status = "running";
-			}
+			const next = this.phases[this.currentIndex];
+			if (next) next.status = "running";
 		}
 	}
 

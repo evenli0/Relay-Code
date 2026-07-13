@@ -4,7 +4,7 @@ import { appendFile } from "node:fs/promises";
 const MEMORY_DIR = "memory";
 
 /** 每进程唯一的会话 ID */
-const SESSION_ID = Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 6);
+const SESSION_ID = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
 
 interface DialogueEntry {
 	role: "user" | "assistant" | "system" | "tool";
