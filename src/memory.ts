@@ -61,7 +61,8 @@ export async function readMemoryFile(path: string): Promise<string> {
 		const file = Bun.file(path);
 		if (!(await file.exists())) return "";
 		return await file.text();
-	} catch {
+	} catch (e: unknown) {
+		console.error(`[memory] 读取文件失败: ${path}`, e);
 		return "";
 	}
 }

@@ -46,8 +46,9 @@ export async function createWorktree(slug: string): Promise<string> {
 export async function removeWorktree(worktreePath: string): Promise<void> {
 	try {
 		git(["worktree", "remove", "--force", worktreePath]);
-	} catch {
-		// 忽略删除失败（可能已被外部删除）
+	} catch (e: unknown) {
+		// 目录可能已被外部删除，不抛出
+		console.error(`[worktree] 删除失败: ${worktreePath}`, e);
 	}
 }
 
