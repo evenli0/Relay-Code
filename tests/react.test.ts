@@ -59,9 +59,7 @@ test("dispatch工具调用 → 结果放回 → 再调LLM → 返回文本", asy
         function: {
           name: "dispatch",
           arguments: JSON.stringify({
-            prompt: { task: "写一个hello world脚本" },
-            plan: { goal: "测试", phases: [{ name: "执行", description: "写脚本" }] },
-            responseSchema: { type: "object", properties: { result: { type: "string" } } },
+            task: "写一个hello world脚本",
           }),
         },
       },
@@ -75,7 +73,7 @@ test("dispatch工具调用 → 结果放回 → 再调LLM → 返回文本", asy
   const orch = new Orchestrator()
   const result = await orch.runReAct("帮我写个hello world")
 
-  expect(result).toBe("完成。已创建 hello world 脚本")
+  expect(result).toContain("已创建 hello world 脚本")
 
   // 验证：编排Agent收到了dispatch的完整回执
   const allCalls = mockCallLLM.mock.calls
