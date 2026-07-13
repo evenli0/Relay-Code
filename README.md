@@ -7,7 +7,7 @@
 [![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.9-blue)](https://www.typescriptlang.org/)
 [![Bun](https://img.shields.io/badge/Bun-1.3-black)](https://bun.sh)
-[![CI](https://img.shields.io/badge/CI-GitHub%20Actions-green)](.github/workflows/ci.yml)
+[![CI](https://github.com/evenli0/Relay-Code/actions/workflows/ci.yml/badge.svg)](https://github.com/evenli0/Relay-Code/actions/workflows/ci.yml)
 
 [English](README.md) | [中文](README.zh-CN.md)
 
@@ -243,6 +243,4 @@ Relay Code strikes a balance: use a plan as a lightweight script, let the LLM ad
 
 ## Status
 
-[![CI](https://github.com/evenli0/Relay-Code/actions/workflows/ci.yml/badge.svg)](https://github.com/evenli0/Relay-Code/actions/workflows/ci.yml)
-![Tests](https://img.shields.io/badge/tests-43%20passing-brightgreen)
 ![Last Commit](https://img.shields.io/github/last-commit/evenli0/Relay-Code)

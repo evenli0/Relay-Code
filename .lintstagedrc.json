@@ -1,7 +1,5 @@
 {
   "*.ts": [
-    "biome check --no-errors-on-unmatched",
-    "tsc --noEmit",
-    "bun test --bail"
+    "biome check --no-errors-on-unmatched"
   ]
 }
