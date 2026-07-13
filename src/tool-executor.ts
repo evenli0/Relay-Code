@@ -1,7 +1,6 @@
 import path from "node:path";
 import { ALL_TOOLS } from "./tools";
 import type { DispatchConfig, SubAgentResult } from "./types";
-import { isDispatchConfig } from "./types";
 
 /**
  * ToolExecutor —— 工具执行路由
@@ -20,25 +19,39 @@ export class ToolExecutor {
 		// dispatch 委托给外部回调
 		if (toolName === "dispatch") {
 			if (!this.dispatchFn) return "dispatch 不可用";
-			if (!isDispatchConfig(args))
-				return "dispatch 参数无效：缺少 prompt.task（字符串）";
-			const config: DispatchConfig = args;
-			if (!config.responseSchema)
-				return "dispatch 缺少 responseSchema（子Agent的JSON输出结构）。请在 responseSchema 中定义子Agent的返回格式。";
-
+			const task = String(args.task ?? "").trim();
+			const role = String(args.role ?? "").trim();
+			const format = String(args.format ?? "").trim();
+			if (!task || task.length < 10)
+				return "dispatch 任务描述过短（<10字符），请重写 task 包含具体上下文";
 			const planFile = Bun.file("plan.md");
 			if (!(await planFile.exists())) {
-				if (!config.exploratory)
-					return "dispatch 需要 plan.md 或 plans/current.md 才能执行。请先用 write 写下计划，再 dispatch。";
+				if (!args.exploratory)
+					return "dispatch 需要 plan.md 才能执行。请先用 write 写下计划，再 dispatch。";
 			}
-
+			const config: DispatchConfig = {
+				prompt: {
+					task,
+					role: role || void 0,
+					instructions: role ? `你是${role}。${task}` : task,
+				},
+				responseSchema: format
+					? {
+							type: "object",
+							properties: {
+								keyFindings: { type: "array" },
+								summary: { type: "string" },
+							},
+						}
+					: { type: "object", properties: { result: { type: "string" } } },
+				max_rounds: 30,
+			};
 			const result = await this.dispatchFn(config);
 			if (result.structured) {
-				return `[dispatch 完成]\n状态: ${result.status}\n结构化结果:\n${JSON.stringify(result.structured, null, 2)}`;
+				return `[dispatch 完成] 状态: ${result.status} 结构化结果: ${JSON.stringify(result.structured, null, 2)}`;
 			}
-			return `[dispatch 完成]\n状态: ${result.status}\n输出: ${result.output}`;
+			return `[dispatch 完成] 状态: ${result.status} 输出: ${result.output}`;
 		}
-
 		// 路径解析：worktree 隔离下，相对路径 → worktree 内的绝对路径
 		let resolvedArgs = args;
 		if (cwd) {

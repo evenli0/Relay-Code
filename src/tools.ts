@@ -117,90 +117,23 @@ const dispatchTool: ToolDefinition = {
 	type: "function",
 	function: {
 		name: "dispatch",
-		description: [
-			"工作流编排：派生子Agent并行执行子任务。仅在用户要求工作流/并行/动态编排时使用。",
-			"",
-			'⚠ 先 write("plan.md", 内容) 写下计划，否则被拒绝。',
-			"",
-			"必填参数结构（照这个格式填，不要改字段名）：",
-			"dispatch({",
-			"  prompt: {",
-			'    task: "子Agent要完成的具体任务（必填）",',
-			'    role: "子Agent的角色身份（可选）",',
-			'    instructions: "行为指引（可选）"',
-			"  },",
-			'  responseSchema: { type: "object", properties: { ... } }  // 必填',
-			"})",
-			"",
-			"注意：prompt 是一个对象，不是字符串！task 必须放在 prompt 里面！",
-			'错误写法：dispatch({ task: "xxx" })',
-			'正确写法：dispatch({ prompt: { task: "xxx" } })',
-			"",
-			"可选参数：",
-			'  preload: ["文件路径"],',
-			'  isolation: "worktree",',
-			"  exploratory: true,",
-			"  max_rounds: 5,",
-			"  max_time_ms: 300000,",
-			'  phase: "阶段名称"',
-		].join("\n"),
+		description:
+			"工作流编排：派生子Agent并行执行子任务。三个参数按顺序填：dispatch(任务, 角色, 格式描述)",
 		parameters: {
 			type: "object",
-			required: ["prompt", "responseSchema"],
+			required: ["task"],
 			properties: {
-				prompt: {
-					type: "object",
-					required: ["task"],
-					properties: {
-						task: {
-							type: "string",
-							description: "（必填）子Agent要完成的具体任务",
-						},
-						role: {
-							type: "string",
-							description: "（可选）子Agent的角色，如「安全审计员」",
-						},
-						instructions: {
-							type: "string",
-							description:
-								"（可选）子Agent的行为指引。根据 task 和 role 生成详细的身份描述和输出规范，能显著提高回答质量",
-						},
-					},
-				},
-				preload: {
-					type: "array",
-					items: { type: "string" },
-					description:
-						"子Agent的上下文前缀（文件路径）。同preload组合可命中KV Cache，多个子Agent共享时省钱。不是给子Agent传阅读材料——是构建缓存前缀。",
-				},
-				responseSchema: {
-					type: "object",
-					description:
-						"子Agent返回的JSON结构定义。用于获取结构化结果（如 keyDecisions）做后续决策。",
-				},
-				phase: {
+				task: {
 					type: "string",
-					description: "（可选）当前执行的阶段名称，和 plan.md 中的阶段对齐",
+					description: "（必填）子Agent要完成的具体任务",
 				},
-				exploratory: {
-					type: "boolean",
-					description:
-						"（可选）探索模式：true=跳过 plan.md 检查，用于非计划的探索性任务",
-				},
-				isolation: {
+				role: {
 					type: "string",
-					enum: ["worktree"],
-					description:
-						"（可选）隔离模式：worktree=在独立git worktree中执行，避免并行写冲突。仅当多个子Agent可能写同一文件时使用。",
+					description: "（可选）子Agent的角色身份",
 				},
-				allowed_tools: {
-					type: "array",
-					items: {
-						type: "string",
-						enum: ["read", "write", "edit", "grep", "bash"],
-					},
-					description:
-						"（可选）子Agent可用工具。不传=全部可用，传[]=纯LLM无工具。",
+				format: {
+					type: "string",
+					description: "（可选）返回数据格式说明",
 				},
 			},
 		},
