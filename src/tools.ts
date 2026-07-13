@@ -181,6 +181,11 @@ const dispatchTool: ToolDefinition = {
 					type: "string",
 					description: "（可选）当前执行的阶段名称，和 plan.md 中的阶段对齐",
 				},
+				exploratory: {
+					type: "boolean",
+					description:
+						"（可选）探索模式：true=跳过 plan.md 检查，用于非计划的探索性任务",
+				},
 				isolation: {
 					type: "string",
 					enum: ["worktree"],

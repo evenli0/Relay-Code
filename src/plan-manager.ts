@@ -1,41 +1,30 @@
+import { PlanState } from "./plan-state";
 import type { ChatMessage } from "./types";
 
 /**
- * PlanManager —— plan 注入管理
+ * PlanManager —— PlanState 驱动的 plan 注入管理
  *
- * 负责读取 plan.md 或 plans/current.md，注入执行规则，
- * 并跟踪已注入的内容避免重复。
+ * 职责：
+ * 1. 通过 PlanState 解析 plan.md 的阶段标记
+ * 2. 跟踪已注入的阶段状态键，避免重复注入相同状态
+ * 3. 仅注入格式化后的阶段概览 + 执行规则（非原始全文）
+ *
+ * 核心改进：使用 PlanState.getStatusKey() 替代内容哈希去重，
+ * 仅在阶段状态发生变化时重新注入。
  */
 export class PlanManager {
-	private injectedPlans: Set<string> = new Set();
+	/** 上一次注入时的状态键；注入前后状态键不变则跳过。 */
+	private injectedStatusKey: string | null = null;
 
 	async getPlanMessages(): Promise<ChatMessage[]> {
-		let planFile = Bun.file("plan.md");
-		if (!(await planFile.exists())) {
-			planFile = Bun.file("plans/current.md");
-			if (!(await planFile.exists())) return [];
-		}
+		const plan = await PlanState.load();
+		if (!plan || plan.isCompleted()) return [];
 
-		const content = await planFile.text();
-		if (!content.trim() || content.includes("status: completed")) return [];
+		// 状态键去重：相同阶段状态不重复注入
+		const key = plan.getStatusKey();
+		if (this.injectedStatusKey === key) return [];
+		this.injectedStatusKey = key;
 
-		const rules = [
-			"执行规则：",
-			"- 按阶段顺序执行，完成一个阶段后 write 更新 plan.md 状态",
-			"- dispatch 给子Agent 的任务描述必须准确，不要编造代码细节（函数签名、文件路径等）",
-			"- 子Agent 返回后检查其 keyFindings，判断是否合理。合理就继续，不合理就修正 plan 重试",
-			'- dispatch 的 prompt 必须是 { task: "..." } 对象，不是字符串',
-			"- 遇到障碍（文件不存在、任务失败），修改后续阶段调整路线",
-			"- 同一阶段内多个 dispatch 可以在同一轮发出",
-			"- 修改 plan 后用 write 保存，系统下次自动采用新版本",
-		].join("\n");
-
-		const fullContent = `[当前计划]\n${content}\n\n${rules}`;
-
-		const key = fullContent.trim();
-		if (this.injectedPlans.has(key)) return [];
-
-		this.injectedPlans.add(key);
-		return [{ role: "user" as const, content: fullContent }];
+		return [plan.buildMessage()];
 	}
 }

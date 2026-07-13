@@ -28,7 +28,8 @@ export class ToolExecutor {
 
 			const planFile = Bun.file("plan.md");
 			if (!(await planFile.exists())) {
-				return "dispatch 需要 plan.md 或 plans/current.md 才能执行。请先用 write 写下计划，再 dispatch。";
+				if (!config.exploratory)
+					return "dispatch 需要 plan.md 或 plans/current.md 才能执行。请先用 write 写下计划，再 dispatch。";
 			}
 
 			const result = await this.dispatchFn(config);
