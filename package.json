@@ -21,7 +21,7 @@
   "scripts": {
     "dev": "bun run --watch src/index.ts",
     "start": "bun run src/index.ts",
-    "test": "bun test tests/*.test.ts",
+    "test": "bun test tests/harness.test.ts tests/react.test.ts tests/memory.test.ts tests/tools.test.ts",
 "test:integration": "bun test tests/integration/",
 "test:coverage": "bun test --coverage tests/*.test.ts",
     "type-check": "tsc --noEmit",
