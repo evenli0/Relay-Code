@@ -23,6 +23,7 @@
     "start": "bun run src/index.ts",
     "test": "bun test tests/*.test.ts",
 "test:integration": "bun test tests/integration/",
+"test:coverage": "bun test --coverage tests/*.test.ts",
     "type-check": "tsc --noEmit",
     "lint": "biome check src/",
     "format": "biome check --write src/",
