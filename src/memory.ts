@@ -1,4 +1,5 @@
 import { existsSync, mkdirSync, readdirSync } from "fs"
+import { appendFile } from "node:fs/promises"
 
 const MEMORY_DIR = "memory"
 
@@ -15,19 +16,17 @@ function ensureDir(): void {
   }
 }
 
-/** 今日文件名：对话_2026-07-09.jsonl */
-function todayFile(): string {
+/** 今日文件名：dialogue_2026-07-09.jsonl */
+function getTodayFilePath(): string {
   const date = new Date().toISOString().slice(0, 10)
-  return `${MEMORY_DIR}/对话_${date}.jsonl`
+  return `${MEMORY_DIR}/dialogue_${date}.jsonl`
 }
 
-/** 追加一条对话记录到今日文件 */
+/** 追加一条对话记录到今日文件（原子追加，无竞争条件） */
 export async function saveDialogue(role: "user" | "assistant", content: string): Promise<void> {
   ensureDir()
   const entry: DialogueEntry = { role, content, ts: new Date().toISOString() }
-  const existing = await readMemoryFile(todayFile())
-  const line = JSON.stringify(entry) + "\n"
-  await Bun.write(todayFile(), existing + line)
+  await appendFile(getTodayFilePath(), JSON.stringify(entry) + "\n", "utf-8")
 }
 
 /** 返回 memory/ 下所有文件信息 */
@@ -44,7 +43,7 @@ export async function listMemoryFiles(): Promise<{ path: string; size: number; i
     files.push({
       path,
       size: stat.size,
-      isToday: name === todayFile().split("/").pop(),
+      isToday: name === getTodayFilePath().split("/").pop(),
     })
   }
 
