@@ -8,3 +8,26 @@ test_*.json
 
 # 审查报告输出
 审查报告*.md
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+logs/
+
+# Coverage
+coverage/
+*.lcov
+
+# OS
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Environment
+.env.local
+.env.*.local

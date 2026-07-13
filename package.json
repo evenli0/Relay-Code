@@ -8,9 +8,12 @@
     "start": "bun run src/index.ts",
     "test": "bun test",
     "type-check": "tsc --noEmit",
-    "lint": "echo 'no linter configured yet'"
+    "lint": "biome check src/",
+    "format": "biome check --write src/",
+    "format:check": "biome check --no-errors-on-unmatched src/"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.5.3",
     "@types/bun": "latest",
     "typescript": "^5.9.3"
   },
