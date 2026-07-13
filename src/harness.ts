@@ -1,5 +1,6 @@
 import path from "path"
 import type { ChatMessage, DispatchConfig, LLMResponse, SubAgentResult } from "./types"
+import { isDispatchConfig } from "./types"
 import { MAX_REACT_ITERATIONS, LLM_CALL_TIMEOUT_MS } from "./types"
 import { callLLM } from "./llm"
 import { ALL_TOOLS } from "./tools"
@@ -65,8 +66,8 @@ export class Harness {
   ): Promise<string> {
     // dispatch 透传——子 Agent 自己决定是否隔离
     if (toolName === "dispatch") {
-      const config = args as unknown as DispatchConfig
-      if (!config.prompt?.task) return "dispatch 缺少 prompt.task"
+      if (!isDispatchConfig(args)) return "dispatch 参数无效：缺少 prompt.task（字符串）"
+      const config: DispatchConfig = args
       if (!config.responseSchema) return "dispatch 缺少 responseSchema（子Agent的JSON输出结构）。请在 responseSchema 中定义子Agent的返回格式。"
 
       // plan.md 是编排的必备文件，不存在时引导先写计划
@@ -151,12 +152,16 @@ export class Harness {
 
     // 如果指定了 responseSchema，注入标准字段 + 任务特定字段
     if (config.responseSchema) {
-      const userProps = (config.responseSchema as any)?.properties ?? {}
+      const schema = config.responseSchema as Record<string, unknown>
+      const userProps = (schema.properties as Record<string, unknown> | undefined) ?? {}
       // 过滤掉标准字段，防止重复
       const STANDARD_FIELDS = new Set(["keyFindings", "decisions", "summary"])
       const userFields = Object.entries(userProps)
         .filter(([k]) => !STANDARD_FIELDS.has(k))
-        .map(([k, v]: [string, any]) => `      "${k}": ${JSON.stringify(v?.description ?? `${k}的内容`)}`)
+        .map(([k, v]: [string, unknown]) => {
+          const desc = (v as Record<string, unknown> | undefined)?.description
+          return `      "${k}": ${JSON.stringify(desc ?? `${k}的内容`)}`
+        })
         .join(",\n")
       const exampleJson = `{\n  "keyFindings": ["发现了 X 问题", "发现了 Y 问题"],\n  "decisions": ["决定做 A", "决定做 B"],\n  "summary": "一句话总结做了什么"${userFields ? `,\n${userFields}` : ""}\n}`
       prompt += `\n输出纯 JSON，不要 markdown 代码块，不要额外文字。格式如下：\n${exampleJson}\n`

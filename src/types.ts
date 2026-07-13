@@ -75,3 +75,10 @@ export interface SubAgentResult {
   /** 如果 dispatch 指定了 responseSchema，此处为解析后的结构化数据，否则为 null */
   structured?: Record<string, unknown> | null
 }
+
+/** 运行时检查：判断原始参数是否为有效的 DispatchConfig */
+export function isDispatchConfig(raw: Record<string, unknown>): raw is DispatchConfig {
+  const prompt = raw.prompt
+  if (!prompt || typeof prompt !== "object") return false
+  return typeof (prompt as Record<string, unknown>).task === "string"
+}
