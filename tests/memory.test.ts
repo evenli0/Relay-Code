@@ -1,14 +1,16 @@
 import { test, expect, beforeEach } from "bun:test"
 import { saveDialogue, listMemoryFiles, readMemoryFile } from "../src/memory"
 
-function todayFile(): string {
+function getTodayFilePath(): string {
   const date = new Date().toISOString().slice(0, 10)
-  return `memory/对话_${date}.jsonl`
+  return `memory/dialogue_${date}.jsonl`
 }
 
 beforeEach(async () => {
-  // 清理今日测试文件
-  try { await Bun.write(todayFile(), "") } catch {}
+  // 清理今日测试文件（新旧命名都清）
+  try { await Bun.write(getTodayFilePath(), "") } catch {}
+  const oldPath = `memory/对话_${new Date().toISOString().slice(0, 10)}.jsonl`
+  try { await Bun.write(oldPath, "") } catch {}
 })
 
 // -----------------------------------------------
@@ -58,9 +60,10 @@ test("listMemoryFiles 返回文件信息", async () => {
 
   const files = await listMemoryFiles()
   expect(files.length).toBeGreaterThan(0)
-  expect(files[0]?.path).toContain("memory/对话_")
-  expect(files[0]?.size).toBeGreaterThan(0)
-  expect(typeof files[0]?.isToday).toBe("boolean")
+  const today = files.find((f) => f.isToday)
+  expect(today).toBeDefined()
+  expect(today!.path).toContain("memory/dialogue_")
+  expect(today!.size).toBeGreaterThan(0)
 })
 
 // -----------------------------------------------
