@@ -19,7 +19,11 @@ const readTool: ToolDefinition = {
     const file = Bun.file(path)
     const exists = await file.exists()
     if (!exists) return `错误：文件 ${path} 不存在`
-    return await file.text()
+    try {
+      return await file.text()
+    } catch (e: any) {
+      return `错误：读取文件 ${path} 失败 — ${e?.message ?? e ?? '未知错误'}`
+    }
   },
 }
 
@@ -41,8 +45,12 @@ const writeTool: ToolDefinition = {
   async execute(args) {
     const path = String(args.path ?? "")
     const content = String(args.content ?? "")
-    await Bun.write(path, content)
-    return `文件 ${path} 写入成功（${content.length} 字符）`
+    try {
+      await Bun.write(path, content)
+      return `文件 ${path} 写入成功（${content.length} 字符）`
+    } catch (e: any) {
+      return `错误：写入文件 ${path} 失败 — ${e?.message ?? e ?? '未知错误'}`
+    }
   },
 }
 
