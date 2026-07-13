@@ -3,10 +3,14 @@
   "module": "src/index.ts",
   "type": "module",
   "private": true,
-  "devDependencies": {
-    "@types/bun": "latest"
+  "scripts": {
+    "dev": "bun run --watch src/index.ts",
+    "start": "bun run src/index.ts",
+    "test": "bun test",
+    "type-check": "tsc --noEmit"
   },
-  "peerDependencies": {
+  "devDependencies": {
+    "@types/bun": "latest",
     "typescript": "^5.9.3"
   },
   "dependencies": {
