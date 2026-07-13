@@ -9,10 +9,21 @@ const readTool: ToolDefinition = {
 		description: "读取本地文件内容",
 		parameters: {
 			type: "object",
+			required: ["task"],
 			properties: {
-				path: { type: "string", description: "文件路径" },
+				task: {
+					type: "string",
+					description: "（必填）子Agent要完成的具体任务",
+				},
+				role: {
+					type: "string",
+					description: "（可选）子Agent的角色身份",
+				},
+				format: {
+					type: "string",
+					description: "（可选）返回数据格式说明",
+				},
 			},
-			required: ["path"],
 		},
 	},
 	async execute(args) {
@@ -117,33 +128,7 @@ const dispatchTool: ToolDefinition = {
 	type: "function",
 	function: {
 		name: "dispatch",
-		description: [
-			"工作流编排：派生子Agent并行执行子任务。仅在用户要求工作流/并行/动态编排时使用。",
-			"",
-			'⚠ 先 write("plan.md", 内容) 写下计划，否则被拒绝。',
-			"",
-			"必填参数结构（照这个格式填，不要改字段名）：",
-			"dispatch({",
-			"  prompt: {",
-			'    task: "子Agent要完成的具体任务（必填）",',
-			'    role: "子Agent的角色身份（可选）",',
-			'    instructions: "行为指引（可选）"',
-			"  },",
-			'  responseSchema: { type: "object", properties: { ... } }  // 必填',
-			"})",
-			"",
-			"注意：prompt 是一个对象，不是字符串！task 必须放在 prompt 里面！",
-			'错误写法：dispatch({ task: "xxx" })',
-			'正确写法：dispatch({ prompt: { task: "xxx" } })',
-			"",
-			"可选参数：",
-			'  preload: ["文件路径"],',
-			'  isolation: "worktree",',
-			"  exploratory: true,",
-			"  max_rounds: 5,",
-			"  max_time_ms: 300000,",
-			'  phase: "阶段名称"',
-		].join("\n"),
+		description: ["工作流编排：派生子Agent并行执行子任务。", ""].join("\n"),
 		parameters: {
 			type: "object",
 			required: ["prompt", "responseSchema"],
