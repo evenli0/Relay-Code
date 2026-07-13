@@ -1,6 +1,6 @@
 import path from "path"
-import type { ChatMessage, DispatchConfig, SubAgentResult } from "./types"
-import { MAX_REACT_ITERATIONS } from "./types"
+import type { ChatMessage, DispatchConfig, LLMResponse, SubAgentResult } from "./types"
+import { MAX_REACT_ITERATIONS, LLM_CALL_TIMEOUT_MS } from "./types"
 import { callLLM } from "./llm"
 import { ALL_TOOLS } from "./tools"
 import { saveDialogue } from "./memory"
@@ -256,7 +256,22 @@ export class SubAgent {
     for (let i = 0; i < MAX_REACT_ITERATIONS; i++) {
       await saveDialogue("system", `[子Agent 轮次 ${i + 1}/${MAX_REACT_ITERATIONS}]`)
 
-      const response = await callLLM(this.messages, availableTools)
+      // 每轮 LLM 调用带超时保护
+      const controller = new AbortController()
+      const timeout = setTimeout(() => controller.abort(), LLM_CALL_TIMEOUT_MS)
+      let response: LLMResponse
+      try {
+        response = await callLLM(this.messages, availableTools, { signal: controller.signal })
+      } catch (e: any) {
+        clearTimeout(timeout)
+        if (e?.name === "AbortError") {
+          await saveDialogue("system", `[子Agent 超时] LLM 调用超过 ${LLM_CALL_TIMEOUT_MS}ms`)
+          return { status: "error", output: `子Agent LLM 调用超时（${LLM_CALL_TIMEOUT_MS}ms）` }
+        }
+        await saveDialogue("system", `[子Agent 错误] ${e?.message ?? e}`)
+        return { status: "error", output: `子Agent 执行出错: ${e?.message ?? e}` }
+      }
+      clearTimeout(timeout)
 
       // LLM 返回了最终文本 → 退出
       if (!response.tool_calls || response.tool_calls.length === 0) {

@@ -9,6 +9,7 @@ const DEFAULT_MODEL = "deepseek-v4-flash"
 export async function callLLM(
   messages: ChatMessage[],
   tools?: ToolDefinition[],
+  options?: { signal?: AbortSignal },
 ): Promise<LLMResponse> {
   const apiKey = process.env.DEEPSEEK_API_KEY
   if (!apiKey) throw new Error("DEEPSEEK_API_KEY 环境变量未设置")
@@ -20,33 +21,46 @@ export async function callLLM(
 
   const model = process.env.DEEPSEEK_MODEL ?? DEFAULT_MODEL
 
-  const apiMessages = messages.map(mapMessage)
-  const apiTools = tools?.map(mapTool) as ChatCompletionTool[] | undefined
+  try {
+    const apiMessages = messages.map(mapMessage)
+    const apiTools = tools?.map(mapTool) as ChatCompletionTool[] | undefined
 
-  const res = await client.chat.completions.create({
-    model,
-    messages: apiMessages,
-    tools: apiTools,
-    max_tokens: 4096,
-  })
+    const res = await client.chat.completions.create({
+      model,
+      messages: apiMessages,
+      tools: apiTools,
+      max_tokens: 4096,
+    }, { signal: options?.signal })
 
-  const choice = res.choices[0]?.message
-  if (!choice) return { content: "", tool_calls: undefined }
+    const choice = res.choices[0]?.message
+    if (!choice) return { content: "", tool_calls: undefined }
 
-  // DeepSeek 返回的 reasoning_content 需要回传
-  const reasoningContent = (choice as any).reasoning_content ?? null
+    // DeepSeek 返回的 reasoning_content 需要回传
+    const reasoningContent = (choice as any).reasoning_content ?? null
 
-  return {
-    content: choice.content ?? null,
-    reasoning_content: reasoningContent,
-    tool_calls: choice.tool_calls?.map((tc) => ({
-      id: tc.id,
-      type: "function" as const,
-      function: {
-        name: tc.function.name,
-        arguments: tc.function.arguments,
-      },
-    })),
+    return {
+      content: choice.content ?? null,
+      reasoning_content: reasoningContent,
+      tool_calls: choice.tool_calls?.map((tc) => ({
+        id: tc.id,
+        type: "function" as const,
+        function: {
+          name: tc.function.name,
+          arguments: tc.function.arguments,
+        },
+      })),
+    }
+  } catch (e: any) {
+    const status = e?.status ?? 0
+    const code = e?.code ?? ""
+    if (e?.name === "AbortError") throw e // 超时透传
+    if (status === 401 || status === 403) return { content: `错误：LLM API 认证失败（${status}）`, tool_calls: undefined }
+    if (status === 429) return { content: `错误：LLM API 请求过频，请稍后重试`, tool_calls: undefined }
+    if (status >= 500) return { content: `错误：LLM API 服务端错误（${status}）`, tool_calls: undefined }
+    if (code === "ECONNREFUSED" || code === "ENOTFOUND" || code === "ERR_CONNECTION_REFUSED") {
+      return { content: `错误：无法连接 LLM API（${code}），请检查网络`, tool_calls: undefined }
+    }
+    return { content: `错误：LLM 调用失败 — ${e?.message ?? e ?? '未知错误'}`, tool_calls: undefined }
   }
 }
 
