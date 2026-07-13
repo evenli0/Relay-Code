@@ -1,4 +1,5 @@
 import { Harness } from "./harness";
+import { unwrapError } from "./errors";
 import { callLLM } from "./llm";
 import { saveDialogue } from "./memory";
 import { buildSystemPrompt } from "./prompts";
@@ -40,10 +41,10 @@ export class Orchestrator {
 			let response: LLMResponse;
 			try {
 				response = await callLLM(messages, ALL_TOOLS);
-			} catch (e: any) {
+			} catch (e: unknown) {
 				await saveDialogue(
 					"assistant",
-					`[错误] LLM 调用异常: ${e?.message ?? e}`,
+					`[错误] LLM 调用异常: ${unwrapError(e).message ?? e}`,
 				);
 				process.stderr.write(`${stepLabel} LLM 调用异常，重试\n`);
 				continue;
@@ -86,7 +87,9 @@ export class Orchestrator {
 
 			// 按顺序放回消息列表，并记录日志
 			for (let ti = 0; ti < parsed.length; ti++) {
-				const { tc } = parsed[ti]!;
+				const entry = parsed[ti];
+				if (!entry) continue;
+				const { tc } = entry;
 				messages.push({
 					role: "assistant",
 					content: null,
@@ -95,7 +98,7 @@ export class Orchestrator {
 				});
 				messages.push({
 					role: "tool",
-					content: results[ti]!,
+					content: results[ti] ?? ,
 					tool_call_id: tc.id,
 				});
 				await saveDialogue(
