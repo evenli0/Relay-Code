@@ -18,3 +18,15 @@ jobs:
       - run: bun run type-check
       - run: bun run test
       - run: bun run lint
+
+  codeql:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: github/codeql-action/init@v3
+        with:
+          languages: javascript-typescript
+      - uses: github/codeql-action/analyze@v3
