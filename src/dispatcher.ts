@@ -1,4 +1,5 @@
 import { unwrapError } from "./errors";
+import { feedbackLine } from "./feedback";
 import { callLLM } from "./llm";
 import { saveDialogue } from "./memory";
 import { assembleMessages } from "./message-assembler";
@@ -86,6 +87,11 @@ export class SubAgent {
 		);
 
 		for (let i = 0; i < MAX_REACT_ITERATIONS; i++) {
+			const roundStart = Date.now();
+			feedbackLine(
+				`  [子Agent] 轮次 ${i + 1}/${MAX_REACT_ITERATIONS} (${((Date.now() - roundStart) / 1000).toFixed(1)}s)`,
+			);
+
 			await saveDialogue(
 				"system",
 				`[子Agent 轮次 ${i + 1}/${MAX_REACT_ITERATIONS}]`,
@@ -142,6 +148,9 @@ export class SubAgent {
 				return { tc, args };
 			});
 
+			parsed.forEach(({ tc }) => {
+				feedbackLine(`  [子Agent] ⊜ ${tc.function.name}`);
+			});
 			const results = await Promise.all(
 				parsed.map(({ tc, args }) =>
 					this.executor.executeToolCall(tc.function.name, args, this.cwd),
