@@ -120,8 +120,10 @@ function mapMessage(msg: ChatMessage): OpenAI.ChatCompletionMessageParam {
 					id: tc.id,
 					type: "function" as const,
 					function: {
-						name: (tc.function as any).name,
-						arguments: (tc.function as any).arguments,
+						name: (tc as { function: { name: string; arguments: string } })
+							.function.name,
+						arguments: (tc as { function: { name: string; arguments: string } })
+							.function.arguments,
 					},
 				})),
 			} as OpenAI.ChatCompletionMessageParam;

@@ -105,7 +105,7 @@ export class Orchestrator {
 					"assistant",
 					`[工具调用] ${tc.function.name}: ${tc.function.arguments}`,
 				);
-				await saveDialogue("tool", `[结果] ${results[ti]!}`);
+				await saveDialogue("tool", `[结果] ${results[ti] ?? ""}`);
 			}
 		}
 
