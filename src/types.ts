@@ -38,6 +38,9 @@ export type ChatMessage =
 /** 最大 ReAct 循环轮数 */
 export const MAX_REACT_ITERATIONS = 20
 
+/** LLM 单次调用超时（毫秒） */
+export const LLM_CALL_TIMEOUT_MS = 120_000
+
 // ---- SubAgent / Harness 类型 ----
 
 /** Dispatch 配置（编排Agent传给dispatch工具的完整参数） */

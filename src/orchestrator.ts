@@ -1,4 +1,4 @@
-import type { ChatMessage } from "./types"
+import type { ChatMessage, LLMResponse } from "./types"
 import { MAX_REACT_ITERATIONS } from "./types"
 import { callLLM } from "./llm"
 import { ALL_TOOLS } from "./tools"
@@ -37,7 +37,14 @@ export class Orchestrator {
       }
       messages.push(...planMessages)
 
-      const response = await callLLM(messages, ALL_TOOLS)
+      let response: LLMResponse
+      try {
+        response = await callLLM(messages, ALL_TOOLS)
+      } catch (e: any) {
+        await saveDialogue("assistant", `[错误] LLM 调用异常: ${e?.message ?? e}`)
+        process.stderr.write(`${stepLabel} LLM 调用异常，重试\n`)
+        continue
+      }
 
       if (!response.tool_calls || response.tool_calls.length === 0) {
         process.stderr.write(`${stepLabel} 完成\n`)
