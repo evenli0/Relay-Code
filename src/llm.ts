@@ -1,5 +1,6 @@
 import OpenAI from "openai";
 import type { ChatCompletionTool } from "openai/resources/index.mjs";
+import { unwrapError } from "./errors";
 import type { ChatMessage, LLMResponse, ToolDefinition } from "./types";
 
 /** DeepSeek 扩展字段：reasoning_content（思考链） */
@@ -60,15 +61,17 @@ export async function callLLM(
 				id: tc.id,
 				type: "function" as const,
 				function: {
-					name: tc.function.name,
-					arguments: tc.function.arguments,
+					name: (tc as { function: { name: string; arguments: string } })
+						.function.name,
+					arguments: (tc as { function: { name: string; arguments: string } })
+						.function.arguments,
 				},
 			})),
 		};
-	} catch (e: any) {
-		const status = e?.status ?? 0;
-		const code = e?.code ?? "";
-		if (e?.name === "AbortError") throw e; // 超时透传
+	} catch (e: unknown) {
+		const status = unwrapError(e).status ?? 0;
+		const code = unwrapError(e).code ?? "";
+		if (e instanceof DOMException && e.name === "AbortError") throw e; // 超时透传
 		if (status === 401 || status === 403)
 			return {
 				content: `错误：LLM API 认证失败（${status}）`,
@@ -95,7 +98,7 @@ export async function callLLM(
 			};
 		}
 		return {
-			content: `错误：LLM 调用失败 — ${e?.message ?? e ?? "未知错误"}`,
+			content: `错误：LLM 调用失败 — ${unwrapError(e).message ?? e ?? "未知错误"}`,
 			tool_calls: undefined,
 		};
 	}
@@ -117,8 +120,8 @@ function mapMessage(msg: ChatMessage): OpenAI.ChatCompletionMessageParam {
 					id: tc.id,
 					type: "function" as const,
 					function: {
-						name: tc.function.name,
-						arguments: tc.function.arguments,
+						name: (tc.function as any).name,
+						arguments: (tc.function as any).arguments,
 					},
 				})),
 			} as OpenAI.ChatCompletionMessageParam;

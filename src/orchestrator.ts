@@ -1,5 +1,5 @@
-import { Harness } from "./harness";
 import { unwrapError } from "./errors";
+import { Harness } from "./harness";
 import { callLLM } from "./llm";
 import { saveDialogue } from "./memory";
 import { buildSystemPrompt } from "./prompts";
@@ -98,7 +98,7 @@ export class Orchestrator {
 				});
 				messages.push({
 					role: "tool",
-					content: results[ti] ?? ,
+					content: results[ti] ?? "",
 					tool_call_id: tc.id,
 				});
 				await saveDialogue(

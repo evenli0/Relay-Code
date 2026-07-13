@@ -41,7 +41,7 @@ export type ChatMessage =
 	| { role: "tool"; content: string; tool_call_id: string };
 
 /** 最大 ReAct 循环轮数 */
-export const MAX_REACT_ITERATIONS = 60;
+export const MAX_REACT_ITERATIONS = 20;
 
 /** LLM 单次调用超时（毫秒） */
 export const LLM_CALL_TIMEOUT_MS = 120_000;
@@ -84,7 +84,7 @@ export interface SubAgentResult {
 /** 运行时检查：判断原始参数是否为有效的 DispatchConfig */
 export function isDispatchConfig(
 	raw: Record<string, unknown>,
-): raw is DispatchConfig {
+): raw is Record<string, unknown> & DispatchConfig {
 	const prompt = raw.prompt;
 	if (!prompt || typeof prompt !== "object") return false;
 	return typeof (prompt as Record<string, unknown>).task === "string";

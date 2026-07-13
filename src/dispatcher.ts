@@ -1,5 +1,5 @@
-import { callLLM } from "./llm";
 import { unwrapError } from "./errors";
+import { callLLM } from "./llm";
 import { saveDialogue } from "./memory";
 import { assembleMessages } from "./message-assembler";
 import type { ToolExecutor } from "./tool-executor";
@@ -56,7 +56,7 @@ export async function dispatch(
 			try {
 				const match = result.output.match(/```(?:json)?\s*([\s\S]*?)```/);
 				if (match) {
-					result.structured = JSON.parse(match[1]?.trim());
+					result.structured = JSON.parse(match[1]?.trim() ?? "");
 				} else {
 					result.structured = null;
 				}
@@ -100,7 +100,7 @@ export class SubAgent {
 				});
 			} catch (e: unknown) {
 				clearTimeout(timeout);
-				if (e instanceof DOMException && e.name === 'AbortError') {
+				if (e instanceof DOMException && e.name === "AbortError") {
 					await saveDialogue(
 						"system",
 						`[子Agent 超时] LLM 调用超过 ${LLM_CALL_TIMEOUT_MS}ms`,
@@ -110,7 +110,10 @@ export class SubAgent {
 						output: `子Agent LLM 调用超时（${LLM_CALL_TIMEOUT_MS}ms）`,
 					};
 				}
-				await saveDialogue("system", `[子Agent 错误] ${unwrapError(e).message ?? e}`);
+				await saveDialogue(
+					"system",
+					`[子Agent 错误] ${unwrapError(e).message ?? e}`,
+				);
 				return {
 					status: "error",
 					output: `子Agent 执行出错: ${unwrapError(e).message ?? e}`,
@@ -157,14 +160,14 @@ export class SubAgent {
 				});
 				this.messages.push({
 					role: "tool",
-					content: results[ti] ?? ,
+					content: results[ti] ?? "",
 					tool_call_id: tc.id,
 				});
 				await saveDialogue(
 					"assistant",
 					`[子Agent 工具] ${tc.function.name}: ${tc.function.arguments}`,
 				);
-				await saveDialogue("tool", `[子Agent 结果] ${results[ti]!}`);
+				await saveDialogue("tool", `[子Agent 结果] ${results[ti] ?? ""}`);
 			}
 		}
 

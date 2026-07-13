@@ -1,7 +1,7 @@
-import { PlanManager } from "./plan-manager";
-import { ToolExecutor } from "./tool-executor";
 import { dispatch } from "./dispatcher";
 import { assembleMessages } from "./message-assembler";
+import { PlanManager } from "./plan-manager";
+import { ToolExecutor } from "./tool-executor";
 import type { ChatMessage, DispatchConfig, SubAgentResult } from "./types";
 
 /**
