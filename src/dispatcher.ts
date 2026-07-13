@@ -1,11 +1,17 @@
 import { callLLM } from "./llm";
+import { unwrapError } from "./errors";
 import { saveDialogue } from "./memory";
-import { ALL_TOOLS } from "./tools";
-import { createWorktree, getChanges, removeWorktree } from "./worktree";
 import { assembleMessages } from "./message-assembler";
 import type { ToolExecutor } from "./tool-executor";
-import type { ChatMessage, DispatchConfig, LLMResponse, SubAgentResult } from "./types";
-import { MAX_REACT_ITERATIONS, LLM_CALL_TIMEOUT_MS } from "./types";
+import { ALL_TOOLS } from "./tools";
+import type {
+	ChatMessage,
+	DispatchConfig,
+	LLMResponse,
+	SubAgentResult,
+} from "./types";
+import { LLM_CALL_TIMEOUT_MS, MAX_REACT_ITERATIONS } from "./types";
+import { createWorktree, getChanges, removeWorktree } from "./worktree";
 
 /**
  * dispatch 入口：创建 worktree（按需）→ 拼装消息 → 创建 SubAgent → 执行 → 返回
@@ -92,9 +98,9 @@ export class SubAgent {
 				response = await callLLM(this.messages, availableTools, {
 					signal: controller.signal,
 				});
-			} catch (e: any) {
+			} catch (e: unknown) {
 				clearTimeout(timeout);
-				if (e?.name === "AbortError") {
+				if (e instanceof DOMException && e.name === 'AbortError') {
 					await saveDialogue(
 						"system",
 						`[子Agent 超时] LLM 调用超过 ${LLM_CALL_TIMEOUT_MS}ms`,
@@ -104,10 +110,10 @@ export class SubAgent {
 						output: `子Agent LLM 调用超时（${LLM_CALL_TIMEOUT_MS}ms）`,
 					};
 				}
-				await saveDialogue("system", `[子Agent 错误] ${e?.message ?? e}`);
+				await saveDialogue("system", `[子Agent 错误] ${unwrapError(e).message ?? e}`);
 				return {
 					status: "error",
-					output: `子Agent 执行出错: ${e?.message ?? e}`,
+					output: `子Agent 执行出错: ${unwrapError(e).message ?? e}`,
 				};
 			}
 			clearTimeout(timeout);
@@ -140,7 +146,9 @@ export class SubAgent {
 			);
 
 			for (let ti = 0; ti < parsed.length; ti++) {
-				const { tc } = parsed[ti]!;
+				const entry = parsed[ti];
+				if (!entry) continue;
+				const { tc } = entry;
 				this.messages.push({
 					role: "assistant",
 					content: null,
@@ -149,7 +157,7 @@ export class SubAgent {
 				});
 				this.messages.push({
 					role: "tool",
-					content: results[ti]!,
+					content: results[ti] ?? ,
 					tool_call_id: tc.id,
 				});
 				await saveDialogue(
