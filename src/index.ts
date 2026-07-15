@@ -1,27 +1,26 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { milestone } from "./display";
 import { saveDialogue } from "./memory";
 import { Orchestrator } from "./orchestrator";
 
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
-
 // === .env 自动加载 ===
 try {
-  const envPath = resolve(import.meta.dir, "..", ".env");
-  const content = readFileSync(envPath, "utf-8");
-  for (const line of content.split("\n")) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith("#")) continue;
-    const eqIdx = trimmed.indexOf("=");
-    if (eqIdx === -1) continue;
-    const key = trimmed.slice(0, eqIdx).trim();
-    const val = trimmed.slice(eqIdx + 1).trim();
-    if (key && !process.env[key]) {
-      process.env[key] = val;
-    }
-  }
+	const envPath = resolve(import.meta.dir, "..", ".env");
+	const content = readFileSync(envPath, "utf-8");
+	for (const line of content.split("\n")) {
+		const trimmed = line.trim();
+		if (!trimmed || trimmed.startsWith("#")) continue;
+		const eqIdx = trimmed.indexOf("=");
+		if (eqIdx === -1) continue;
+		const key = trimmed.slice(0, eqIdx).trim();
+		const val = trimmed.slice(eqIdx + 1).trim();
+		if (key && !process.env[key]) {
+			process.env[key] = val;
+		}
+	}
 } catch {
-  // .env 不存在是允许的
+	// .env 不存在是允许的
 }
 
 const VERSION = "0.1.0";

@@ -90,8 +90,7 @@ export async function callLLM(
 
 			if (isRetryable && attempt < MAX_RETRIES) {
 				const delay =
-					BASE_DELAY_MS * 2 ** attempt +
-					(Math.random() - 0.5) * 1000;
+					BASE_DELAY_MS * 2 ** attempt + (Math.random() - 0.5) * 1000;
 				process.stderr.write(
 					`LLM 调用失败（${status || code}），第 ${attempt + 1}/${MAX_RETRIES + 1} 次尝试，${Math.round(delay)}ms 后重试\n`,
 				);
@@ -135,7 +134,10 @@ export async function callLLM(
 	}
 
 	// 所有重试已耗尽
-	return { content: `错误：LLM 调用失败 — 重试次数已耗尽`, tool_calls: undefined };
+	return {
+		content: `错误：LLM 调用失败 — 重试次数已耗尽`,
+		tool_calls: undefined,
+	};
 }
 
 /** 将内部 ChatMessage 转为 OpenAI SDK 格式 */

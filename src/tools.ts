@@ -1,30 +1,30 @@
+import { existsSync } from "node:fs";
 import { unwrapError } from "./errors";
 import type { ToolDefinition } from "./types";
-import { existsSync } from "node:fs";
 
 const isWindows = process.platform === "win32";
 
 export function resolveShell(): { bin: string; flag: string } {
-  if (!isWindows) return { bin: "bash", flag: "-c" };
-  // Windows: 探测 Git Bash
-  const gitBashPaths = [
-    "C:\\Program Files\\Git\\bin\\bash.exe",
-    "C:\\Program Files (x86)\\Git\\bin\\bash.exe",
-  ];
-  for (const p of gitBashPaths) {
-    if (existsSync(p)) return { bin: p, flag: "-c" };
-  }
-  // fallback 到 cmd
-  return { bin: "cmd", flag: "/c" };
+	if (!isWindows) return { bin: "bash", flag: "-c" };
+	// Windows: 探测 Git Bash
+	const gitBashPaths = [
+		"C:\\Program Files\\Git\\bin\\bash.exe",
+		"C:\\Program Files (x86)\\Git\\bin\\bash.exe",
+	];
+	for (const p of gitBashPaths) {
+		if (existsSync(p)) return { bin: p, flag: "-c" };
+	}
+	// fallback 到 cmd
+	return { bin: "cmd", flag: "/c" };
 }
 
 function resolveGrep(): { bin: string; args: string[] } | null {
-  if (!isWindows) return null; // Unix: 使用默认 grep
-  const gitUsrBin = "C:\\Program Files\\Git\\usr\\bin\\grep.exe";
-  if (existsSync(gitUsrBin)) {
-    return { bin: gitUsrBin, args: [] };
-  }
-  return null; // 使用 PowerShell fallback
+	if (!isWindows) return null; // Unix: 使用默认 grep
+	const gitUsrBin = "C:\\Program Files\\Git\\usr\\bin\\grep.exe";
+	if (existsSync(gitUsrBin)) {
+		return { bin: gitUsrBin, args: [] };
+	}
+	return null; // 使用 PowerShell fallback
 }
 
 /** read 工具：读取本地文件 */
@@ -118,14 +118,18 @@ const grepTool: ToolDefinition = {
 						return parts.join("\n") || "grep 错误：无法读取部分文件";
 					}
 					return `grep 错误：${stderr || "未知错误"}`;
-				} catch { /* fall through */ }
+				} catch {
+					/* fall through */
+				}
 			}
 			// PowerShell fallback
 			try {
 				const psCmd = `Select-String -Pattern '${pattern}' -Path '${searchPath}\\*' -Recurse | ForEach-Object { "\\($_.Filename):\\($_.LineNumber):\\($_.Line.Trim())" }`;
 				const proc = Bun.spawnSync(["powershell", "-Command", psCmd]);
 				if (proc.exitCode === 0) return proc.stdout.toString() || "未找到匹配";
-			} catch { /* fall through */ }
+			} catch {
+				/* fall through */
+			}
 			return "grep 执行失败（Windows 上未安装 Git Bash，且 PowerShell 搜索也失败）";
 		}
 

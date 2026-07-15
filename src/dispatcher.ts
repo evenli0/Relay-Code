@@ -1,9 +1,4 @@
-import {
-	elapsed,
-	subAgentEnd,
-	subAgentStart,
-	toolResultLine,
-} from "./display";
+import { elapsed, subAgentEnd, subAgentStart, toolResultLine } from "./display";
 import { unwrapError } from "./errors";
 import { callLLM } from "./llm";
 import { saveDialogue } from "./memory";
@@ -167,12 +162,7 @@ export class SubAgent {
 					"assistant",
 					`[子Agent 完成] ${response.content ?? ""}`,
 				);
-				subAgentEnd(
-					0,
-					i + 1,
-					parseFloat(elapsed(subStart)),
-					true,
-				);
+				subAgentEnd(0, i + 1, parseFloat(elapsed(subStart)), true);
 				return {
 					status: "completed",
 					output: response.content ?? "",
@@ -199,15 +189,8 @@ export class SubAgent {
 						this.cwd,
 					);
 					const summary =
-						result.length > 60
-							? `${result.substring(0, 60)}...`
-							: result;
-					toolResultLine(
-						tc.function.name,
-						true,
-						summary,
-						Date.now() - t0,
-					);
+						result.length > 60 ? `${result.substring(0, 60)}...` : result;
+					toolResultLine(tc.function.name, true, summary, Date.now() - t0);
 					return result;
 				}),
 			);
@@ -220,12 +203,7 @@ export class SubAgent {
 			) {
 				emptyResultRounds++;
 				if (emptyResultRounds >= 2) {
-					subAgentEnd(
-						0,
-						i + 1,
-						parseFloat(elapsed(subStart)),
-						false,
-					);
+					subAgentEnd(0, i + 1, parseFloat(elapsed(subStart)), false);
 					return {
 						status: "error",
 						output: "子Agent 连续 2 轮返回空结果，提前终止",

@@ -66,7 +66,10 @@ export class ToolExecutor {
 		if (toolName === "bash" && cwd) {
 			const command = String(resolvedArgs.command ?? "");
 			const shell = resolveShell();
-			const proc = Bun.spawnSync([shell.bin, shell.flag, command], { cwd, timeout: 30000 });
+			const proc = Bun.spawnSync([shell.bin, shell.flag, command], {
+				cwd,
+				timeout: 30000,
+			});
 			return (
 				proc.stdout.toString() +
 				(proc.stderr.toString() ? `\nstderr:\n${proc.stderr.toString()}` : "")

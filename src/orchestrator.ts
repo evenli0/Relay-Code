@@ -149,12 +149,7 @@ export class Orchestrator {
 					);
 					const summary =
 						result.length > 60 ? `${result.substring(0, 60)}...` : result;
-					toolResultLine(
-						tc.function.name,
-						true,
-						summary,
-						Date.now() - t0,
-					);
+					toolResultLine(tc.function.name, true, summary, Date.now() - t0);
 					return result;
 				}),
 			);
