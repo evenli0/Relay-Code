@@ -1,4 +1,4 @@
-import { feedbackLine } from "./feedback";
+import { milestone } from "./display";
 import { saveDialogue } from "./memory";
 import { Orchestrator } from "./orchestrator";
 
@@ -22,6 +22,9 @@ function showHelp(): void {
 	console.log(
 		"  DEEPSEEK_MODEL      Optional. Model name (default: deepseek-v4-flash)",
 	);
+	console.log(
+		"  DEEPSEEK_BASE_URL   Optional. API base URL (default: https://api.deepseek.com)",
+	);
 }
 
 async function chatMode(): Promise<void> {
@@ -41,7 +44,7 @@ async function chatMode(): Promise<void> {
 		const input = line.trim();
 		if (!input || input === "exit") break;
 
-		feedbackLine(`\n[运行] ${input}`);
+		milestone(`运行: ${input}`);
 		const result = await orchestrator.runReAct(input);
 		console.log(`\n${result}\n`);
 		readline.prompt();
@@ -51,9 +54,22 @@ async function chatMode(): Promise<void> {
 }
 
 async function main() {
-	const arg = process.argv[2];
+	let arg = process.argv[2];
 
-	if (!arg || arg === "--help") {
+	// 1. 先检测管道模式（在任何参数解析之前）
+	if (!process.stdin.isTTY) {
+		const chunks: Buffer[] = [];
+		for await (const chunk of process.stdin) {
+			chunks.push(chunk as Buffer);
+		}
+		const pipedTask = Buffer.concat(chunks).toString("utf-8").trim();
+		if (pipedTask) {
+			arg = pipedTask;
+		}
+	}
+
+	// 2. 然后处理 CLI 参数
+	if (arg === "--help") {
 		showHelp();
 		process.exit(0);
 	}
@@ -68,19 +84,13 @@ async function main() {
 		return;
 	}
 
-	// Pipe mode: read from stdin if available
-	if (!process.stdin.isTTY && !arg) {
-		const stdin = await Bun.stdin.text();
-		if (stdin.trim()) {
-			const orchestrator = new Orchestrator();
-			await saveDialogue("user", stdin.trim());
-			const result = await orchestrator.runReAct(stdin.trim());
-			console.log(result);
-			return;
-		}
+	// 3. 最终检查：无任务则显示帮助
+	if (!arg) {
+		showHelp();
+		process.exit(0);
 	}
 
-	// Normal mode
+	// 4. 正常模式
 	const orchestrator = new Orchestrator();
 	await saveDialogue("user", arg);
 	const result = await orchestrator.runReAct(arg);

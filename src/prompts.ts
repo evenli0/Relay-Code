@@ -17,5 +17,7 @@ export function buildSystemPrompt(): string {
 - 对比任务：并行 dispatch 两个子Agent 带不同角色，对比它们的返回再决策
 - 大规模任务：按目录/模块分批，每批完成后验证再进下一批
 - 遇到子Agent 返回 error：修改 plan 调整路线，不要重复失败的 dispatch
-- 探索性任务（查询/分析）：直接用 dispatch，无需先写 plan.md`;
+- 探索性任务（查询/分析）：直接用 dispatch，无需先写 plan.md
+- dispatch 在 plan.md 不存在时自动以探索模式运行（适合单次查询/分析）
+- 复杂多阶段任务建议先 write plan.md 再 dispatch（计划驱动模式）`;
 }

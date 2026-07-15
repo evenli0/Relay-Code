@@ -1,3 +1,12 @@
+import {
+	clearStatusLine,
+	milestone,
+	showPlan,
+	startSpinner,
+	statusLine,
+	stopSpinner,
+	toolResultLine,
+} from "./display";
 import { unwrapError } from "./errors";
 import { Harness } from "./harness";
 import { callLLM } from "./llm";
@@ -27,14 +36,22 @@ export class Orchestrator {
 		await saveDialogue("system", buildSystemPrompt());
 		await saveDialogue("user", userInput);
 
+		const overallStart = Date.now();
+		startSpinner();
+
 		for (let i = 0; i < MAX_REACT_ITERATIONS; i++) {
-			const stepLabel = `[${i + 1}/${MAX_REACT_ITERATIONS}]`;
-			process.stderr.write(`${stepLabel} 思考中...\r`);
+			statusLine(
+				i + 1,
+				MAX_REACT_ITERATIONS,
+				"思考中...",
+				(Date.now() - overallStart) / 1000,
+			);
 
 			// 注入 plan（像 Skill 一样追加到最新位置，内容不变时不重复注入）
 			const planMessages = await this.harness.getPlanMessages();
 			for (const pm of planMessages) {
 				await saveDialogue("system", `[plan 注入]\n${pm.content}`);
+				showPlan(pm.content ?? "");
 			}
 			messages.push(...planMessages);
 
@@ -42,16 +59,38 @@ export class Orchestrator {
 			try {
 				response = await callLLM(messages, ALL_TOOLS);
 			} catch (e: unknown) {
+				const err = unwrapError(e);
+				// AbortError: LLM 调用超时
+				if (e instanceof DOMException && e.name === "AbortError") {
+					await saveDialogue(
+						"assistant",
+						`[错误] LLM 调用超时: ${err.message}`,
+					);
+					clearStatusLine();
+					milestone("LLM 调用超时，2s 后重试");
+					await new Promise((r) => setTimeout(r, 2000));
+					continue;
+				}
+				// 未知异常
 				await saveDialogue(
 					"assistant",
-					`[错误] LLM 调用异常: ${unwrapError(e).message ?? e}`,
+					`[错误] LLM 调用异常: ${err.message ?? e}`,
 				);
-				process.stderr.write(`${stepLabel} LLM 调用异常，重试\n`);
+				clearStatusLine();
+				milestone("LLM 调用异常，1s 后重试");
+				await new Promise((r) => setTimeout(r, 1000));
 				continue;
 			}
 
 			if (!response.tool_calls || response.tool_calls.length === 0) {
-				process.stderr.write(`${stepLabel} 完成\n`);
+				stopSpinner();
+				clearStatusLine();
+				statusLine(
+					i + 1,
+					MAX_REACT_ITERATIONS,
+					"完成",
+					(Date.now() - overallStart) / 1000,
+				);
 				await saveDialogue("assistant", response.content ?? "");
 				return response.content ?? "";
 			}
@@ -76,13 +115,32 @@ export class Orchestrator {
 				}
 				return tc.function.name;
 			});
-			process.stderr.write(`${stepLabel} ${actions.join(" + ")}\n`);
+			clearStatusLine();
+			statusLine(
+				i + 1,
+				MAX_REACT_ITERATIONS,
+				actions.join(" + "),
+				(Date.now() - overallStart) / 1000,
+			);
 
 			// 并行执行所有工具调用
 			const results = await Promise.all(
-				parsed.map(({ tc, args }) =>
-					this.harness.executeToolCall(tc.function.name, args),
-				),
+				parsed.map(async ({ tc, args }) => {
+					const t0 = Date.now();
+					const result = await this.harness.executeToolCall(
+						tc.function.name,
+						args,
+					);
+					const summary =
+						result.length > 60 ? `${result.substring(0, 60)}...` : result;
+					toolResultLine(
+						tc.function.name,
+						true,
+						summary,
+						Date.now() - t0,
+					);
+					return result;
+				}),
 			);
 
 			// 按顺序放回消息列表，并记录日志
@@ -109,6 +167,7 @@ export class Orchestrator {
 			}
 		}
 
+		stopSpinner();
 		await saveDialogue(
 			"assistant",
 			"任务未在限定轮次内完成，请尝试简化指令后重试。",

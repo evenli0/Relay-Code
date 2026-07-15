@@ -1,5 +1,9 @@
+import {
+	subAgentEnd,
+	subAgentStart,
+	toolResultLine,
+} from "./display";
 import { unwrapError } from "./errors";
-import { feedbackLine } from "./feedback";
 import { callLLM } from "./llm";
 import { saveDialogue } from "./memory";
 import { assembleMessages } from "./message-assembler";
@@ -92,6 +96,15 @@ export class SubAgent {
 
 	async run(): Promise<SubAgentResult> {
 		const subStart = Date.now();
+
+		// 从消息中提取任务描述
+		const userMsg = this.messages.find((m) => m.role === "user");
+		const taskLabel =
+			typeof userMsg?.content === "string"
+				? userMsg.content.substring(0, 80)
+				: "子Agent任务";
+		subAgentStart(0, taskLabel);
+
 		let _llmCalls = 0;
 		let _toolsUsed = 0;
 		const availableTools = ALL_TOOLS.filter((t) =>
@@ -99,12 +112,8 @@ export class SubAgent {
 		);
 
 		const iterLimit = this.maxRounds ?? 30;
+		let emptyResultRounds = 0;
 		for (let i = 0; i < Math.min(iterLimit, MAX_REACT_ITERATIONS); i++) {
-			const roundStart = Date.now();
-			feedbackLine(
-				`  [子Agent] 轮次 ${i + 1}/${MAX_REACT_ITERATIONS} (${((Date.now() - roundStart) / 1000).toFixed(1)}s)`,
-			);
-
 			await saveDialogue(
 				"system",
 				`[子Agent 轮次 ${i + 1}/${MAX_REACT_ITERATIONS}]`,
@@ -115,6 +124,8 @@ export class SubAgent {
 			let response: LLMResponse;
 			try {
 				if (this.maxTimeMs && Date.now() - subStart > this.maxTimeMs) {
+					const elapsed = (Date.now() - subStart) / 1000;
+					subAgentEnd(0, i + 1, elapsed, false);
 					return {
 						status: "error",
 						output: `子Agent 总执行时间超过 ${this.maxTimeMs}ms 限制`,
@@ -126,11 +137,13 @@ export class SubAgent {
 				});
 			} catch (e: unknown) {
 				clearTimeout(timeout);
+				const elapsed = (Date.now() - subStart) / 1000;
 				if (e instanceof DOMException && e.name === "AbortError") {
 					await saveDialogue(
 						"system",
 						`[子Agent 超时] LLM 调用超过 ${LLM_CALL_TIMEOUT_MS}ms`,
 					);
+					subAgentEnd(0, i + 1, elapsed, false);
 					return {
 						status: "error",
 						output: `子Agent LLM 调用超时（${LLM_CALL_TIMEOUT_MS}ms）`,
@@ -140,6 +153,7 @@ export class SubAgent {
 					"system",
 					`[子Agent 错误] ${unwrapError(e).message ?? e}`,
 				);
+				subAgentEnd(0, i + 1, elapsed, false);
 				return {
 					status: "error",
 					output: `子Agent 执行出错: ${unwrapError(e).message ?? e}`,
@@ -151,6 +165,12 @@ export class SubAgent {
 				await saveDialogue(
 					"assistant",
 					`[子Agent 完成] ${response.content ?? ""}`,
+				);
+				subAgentEnd(
+					0,
+					i + 1,
+					(Date.now() - subStart) / 1000,
+					true,
 				);
 				return {
 					status: "completed",
@@ -169,14 +189,26 @@ export class SubAgent {
 			});
 
 			_toolsUsed += parsed.length;
-			parsed.forEach(({ tc }) => {
-				feedbackLine(`  [子Agent] ⊜ ${tc.function.name}`);
-			});
-			let emptyResultRounds = 0;
 			const results = await Promise.all(
-				parsed.map(({ tc, args }) =>
-					this.executor.executeToolCall(tc.function.name, args, this.cwd),
-				),
+				parsed.map(async ({ tc, args }) => {
+					const t0 = Date.now();
+					const result = await this.executor.executeToolCall(
+						tc.function.name,
+						args,
+						this.cwd,
+					);
+					const summary =
+						result.length > 60
+							? `${result.substring(0, 60)}...`
+							: result;
+					toolResultLine(
+						tc.function.name,
+						true,
+						summary,
+						Date.now() - t0,
+					);
+					return result;
+				}),
 			);
 
 			// 空结果检测：全部为空时计数
@@ -187,6 +219,12 @@ export class SubAgent {
 			) {
 				emptyResultRounds++;
 				if (emptyResultRounds >= 2) {
+					subAgentEnd(
+						0,
+						i + 1,
+						(Date.now() - subStart) / 1000,
+						false,
+					);
 					return {
 						status: "error",
 						output: "子Agent 连续 2 轮返回空结果，提前终止",
@@ -219,6 +257,8 @@ export class SubAgent {
 			}
 		}
 
+		const elapsed = (Date.now() - subStart) / 1000;
+		subAgentEnd(0, MAX_REACT_ITERATIONS, elapsed, false);
 		await saveDialogue("system", "[子Agent 超时]");
 		return {
 			status: "error",

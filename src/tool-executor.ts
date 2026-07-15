@@ -25,9 +25,10 @@ export class ToolExecutor {
 			if (!task || task.length < 4)
 				return "dispatch 任务描述过短，请重写 task 包含具体上下文";
 			const planFile = Bun.file("plan.md");
-			if (!(await planFile.exists())) {
-				if (!args.exploratory)
-					return "dispatch 需要 plan.md 才能执行。请先用 write 写下计划，再 dispatch。";
+			const hasPlan = await planFile.exists();
+			if (!hasPlan && !args.exploratory) {
+				// 自动降级为探索模式
+				process.stderr.write("[dispatch] plan.md 不存在，自动切换为探索模式\n");
 			}
 			const config: DispatchConfig = {
 				prompt: {

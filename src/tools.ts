@@ -1,5 +1,31 @@
 import { unwrapError } from "./errors";
 import type { ToolDefinition } from "./types";
+import { existsSync } from "node:fs";
+
+const isWindows = process.platform === "win32";
+
+function resolveShell(): { bin: string; flag: string } {
+  if (!isWindows) return { bin: "bash", flag: "-c" };
+  // Windows: 探测 Git Bash
+  const gitBashPaths = [
+    "C:\\Program Files\\Git\\bin\\bash.exe",
+    "C:\\Program Files (x86)\\Git\\bin\\bash.exe",
+  ];
+  for (const p of gitBashPaths) {
+    if (existsSync(p)) return { bin: p, flag: "-c" };
+  }
+  // fallback 到 cmd
+  return { bin: "cmd", flag: "/c" };
+}
+
+function resolveGrep(): { bin: string; args: string[] } | null {
+  if (!isWindows) return null; // Unix: 使用默认 grep
+  const gitUsrBin = "C:\\Program Files\\Git\\usr\\bin\\grep.exe";
+  if (existsSync(gitUsrBin)) {
+    return { bin: gitUsrBin, args: [] };
+  }
+  return null; // 使用 PowerShell fallback
+}
 
 /** read 工具：读取本地文件 */
 const readTool: ToolDefinition = {
@@ -73,13 +99,35 @@ const grepTool: ToolDefinition = {
 	async execute(args) {
 		const pattern = String(args.pattern ?? "");
 		const searchPath = args.path ? String(args.path) : ".";
+
+		// Windows: 尝试 Git Bash grep → PowerShell Select-String
+		if (isWindows) {
+			const gitGrep = resolveGrep();
+			if (gitGrep) {
+				try {
+					const proc = Bun.spawnSync([gitGrep.bin, "-rn", pattern, searchPath]);
+					if (proc.exitCode === 0) return proc.stdout.toString();
+					if (proc.exitCode === 1) return "未找到匹配";
+					return `grep 错误：${proc.stderr.toString()}`;
+				} catch { /* fall through */ }
+			}
+			// PowerShell fallback
+			try {
+				const psCmd = `Select-String -Pattern '${pattern}' -Path '${searchPath}\\*' -Recurse | ForEach-Object { "\\($_.Filename):\\($_.LineNumber):\\($_.Line.Trim())" }`;
+				const proc = Bun.spawnSync(["powershell", "-Command", psCmd]);
+				if (proc.exitCode === 0) return proc.stdout.toString() || "未找到匹配";
+			} catch { /* fall through */ }
+			return "grep 执行失败（Windows 上未安装 Git Bash，且 PowerShell 搜索也失败）";
+		}
+
+		// Unix 原有逻辑
 		try {
 			const proc = Bun.spawnSync(["grep", "-rn", pattern, searchPath]);
 			if (proc.exitCode === 0) return proc.stdout.toString();
 			if (proc.exitCode === 1) return "未找到匹配";
 			return `grep 错误：${proc.stderr.toString()}`;
 		} catch {
-			return `grep 执行失败（当前环境可能不支持 grep 命令）`;
+			return "grep 执行失败（当前环境可能不支持 grep 命令）";
 		}
 	},
 };
@@ -100,14 +148,17 @@ const bashTool: ToolDefinition = {
 	},
 	async execute(args) {
 		const command = String(args.command ?? "");
+		const shell = resolveShell();
 		try {
-			const proc = Bun.spawnSync(["bash", "-c", command]);
+			const proc = Bun.spawnSync([shell.bin, shell.flag, command], {
+				timeout: 30_000, // 30秒超时
+			});
 			return (
 				proc.stdout.toString() +
 				(proc.stderr.toString() ? `\nstderr:\n${proc.stderr.toString()}` : "")
 			);
 		} catch {
-			return `bash 执行失败（当前环境可能不支持 bash）`;
+			return `bash 执行失败（当前环境可能不支持 ${shell.bin}）`;
 		}
 	},
 };
@@ -134,6 +185,10 @@ const dispatchTool: ToolDefinition = {
 				format: {
 					type: "string",
 					description: "（可选）返回数据格式说明",
+				},
+				exploratory: {
+					type: "boolean",
+					description: "设为 true 可在没有 plan.md 的情况下执行探索性任务",
 				},
 			},
 		},
