@@ -1,5 +1,5 @@
 import path from "node:path";
-import { ALL_TOOLS } from "./tools";
+import { ALL_TOOLS, resolveShell } from "./tools";
 import type { DispatchConfig, SubAgentResult } from "./types";
 
 /**
@@ -65,7 +65,8 @@ export class ToolExecutor {
 		// bash 需要特殊处理：在 worktree 目录执行
 		if (toolName === "bash" && cwd) {
 			const command = String(resolvedArgs.command ?? "");
-			const proc = Bun.spawnSync(["bash", "-c", command], { cwd });
+			const shell = resolveShell();
+			const proc = Bun.spawnSync([shell.bin, shell.flag, command], { cwd, timeout: 30000 });
 			return (
 				proc.stdout.toString() +
 				(proc.stderr.toString() ? `\nstderr:\n${proc.stderr.toString()}` : "")

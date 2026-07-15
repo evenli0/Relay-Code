@@ -71,6 +71,22 @@ export class Orchestrator {
 					await new Promise((r) => setTimeout(r, 2000));
 					continue;
 				}
+				// 配置错误: 不重试，立即退出
+				const msg = err.message ?? "";
+				if (
+					msg.includes("DEEPSEEK_API_KEY") ||
+					msg.includes("API key") ||
+					msg.includes("API_KEY") ||
+					msg.includes("认证失败")
+				) {
+					stopSpinner();
+					clearStatusLine();
+					const hint =
+						"请设置 DEEPSEEK_API_KEY 环境变量后重试。获取地址: https://platform.deepseek.com";
+					await saveDialogue("assistant", `[配置错误] ${hint}`);
+					process.stderr.write(`\n❌ 配置错误: ${hint}\n`);
+					return `配置错误: ${hint}`;
+				}
 				// 未知异常
 				await saveDialogue(
 					"assistant",

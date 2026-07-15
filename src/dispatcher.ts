@@ -1,4 +1,5 @@
 import {
+	elapsed,
 	subAgentEnd,
 	subAgentStart,
 	toolResultLine,
@@ -124,8 +125,8 @@ export class SubAgent {
 			let response: LLMResponse;
 			try {
 				if (this.maxTimeMs && Date.now() - subStart > this.maxTimeMs) {
-					const elapsed = (Date.now() - subStart) / 1000;
-					subAgentEnd(0, i + 1, elapsed, false);
+					const elapsedSec = parseFloat(elapsed(subStart));
+					subAgentEnd(0, i + 1, elapsedSec, false);
 					return {
 						status: "error",
 						output: `子Agent 总执行时间超过 ${this.maxTimeMs}ms 限制`,
@@ -137,13 +138,13 @@ export class SubAgent {
 				});
 			} catch (e: unknown) {
 				clearTimeout(timeout);
-				const elapsed = (Date.now() - subStart) / 1000;
+				const elapsedSec = parseFloat(elapsed(subStart));
 				if (e instanceof DOMException && e.name === "AbortError") {
 					await saveDialogue(
 						"system",
 						`[子Agent 超时] LLM 调用超过 ${LLM_CALL_TIMEOUT_MS}ms`,
 					);
-					subAgentEnd(0, i + 1, elapsed, false);
+					subAgentEnd(0, i + 1, elapsedSec, false);
 					return {
 						status: "error",
 						output: `子Agent LLM 调用超时（${LLM_CALL_TIMEOUT_MS}ms）`,
@@ -153,7 +154,7 @@ export class SubAgent {
 					"system",
 					`[子Agent 错误] ${unwrapError(e).message ?? e}`,
 				);
-				subAgentEnd(0, i + 1, elapsed, false);
+				subAgentEnd(0, i + 1, elapsedSec, false);
 				return {
 					status: "error",
 					output: `子Agent 执行出错: ${unwrapError(e).message ?? e}`,
@@ -169,7 +170,7 @@ export class SubAgent {
 				subAgentEnd(
 					0,
 					i + 1,
-					(Date.now() - subStart) / 1000,
+					parseFloat(elapsed(subStart)),
 					true,
 				);
 				return {
@@ -222,7 +223,7 @@ export class SubAgent {
 					subAgentEnd(
 						0,
 						i + 1,
-						(Date.now() - subStart) / 1000,
+						parseFloat(elapsed(subStart)),
 						false,
 					);
 					return {
@@ -257,8 +258,8 @@ export class SubAgent {
 			}
 		}
 
-		const elapsed = (Date.now() - subStart) / 1000;
-		subAgentEnd(0, MAX_REACT_ITERATIONS, elapsed, false);
+		const elapsedSec = parseFloat(elapsed(subStart));
+		subAgentEnd(0, MAX_REACT_ITERATIONS, elapsedSec, false);
 		await saveDialogue("system", "[子Agent 超时]");
 		return {
 			status: "error",

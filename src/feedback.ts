@@ -11,7 +11,3 @@ export function feedback(msg: string): void {
 export function feedbackLine(msg: string): void {
 	if (isTTY) process.stderr.write(`${msg}\n`);
 }
-
-export function elapsed(t0: number): string {
-	return `${((Date.now() - t0) / 1000).toFixed(1)}s`;
-}

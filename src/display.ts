@@ -126,6 +126,11 @@ export function subAgentEnd(
 
 // ---- 计划展示 ----
 
+/** 计算从 t0 到现在的耗时（秒），用于统一的时间格式化 */
+export function elapsed(t0: number): string {
+	return ((Date.now() - t0) / 1000).toFixed(1);
+}
+
 /** 计划渲染 */
 export function showPlan(planText: string): void {
 	if (isTTY)

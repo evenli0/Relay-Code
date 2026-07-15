@@ -4,7 +4,7 @@ import { existsSync } from "node:fs";
 
 const isWindows = process.platform === "win32";
 
-function resolveShell(): { bin: string; flag: string } {
+export function resolveShell(): { bin: string; flag: string } {
   if (!isWindows) return { bin: "bash", flag: "-c" };
   // Windows: 探测 Git Bash
   const gitBashPaths = [
@@ -106,9 +106,18 @@ const grepTool: ToolDefinition = {
 			if (gitGrep) {
 				try {
 					const proc = Bun.spawnSync([gitGrep.bin, "-rn", pattern, searchPath]);
-					if (proc.exitCode === 0) return proc.stdout.toString();
+					const stdout = proc.stdout.toString();
+					const stderr = proc.stderr.toString();
+					if (proc.exitCode === 0) return stdout;
 					if (proc.exitCode === 1) return "未找到匹配";
-					return `grep 错误：${proc.stderr.toString()}`;
+					// exitCode 2: 部分文件读取错误，但仍可能有有效匹配
+					if (proc.exitCode === 2) {
+						const parts: string[] = [];
+						if (stdout.trim()) parts.push(stdout.trim());
+						if (stderr.trim()) parts.push(`[警告] ${stderr.trim()}`);
+						return parts.join("\n") || "grep 错误：无法读取部分文件";
+					}
+					return `grep 错误：${stderr || "未知错误"}`;
 				} catch { /* fall through */ }
 			}
 			// PowerShell fallback
@@ -123,9 +132,18 @@ const grepTool: ToolDefinition = {
 		// Unix 原有逻辑
 		try {
 			const proc = Bun.spawnSync(["grep", "-rn", pattern, searchPath]);
-			if (proc.exitCode === 0) return proc.stdout.toString();
+			const stdout = proc.stdout.toString();
+			const stderr = proc.stderr.toString();
+			if (proc.exitCode === 0) return stdout;
 			if (proc.exitCode === 1) return "未找到匹配";
-			return `grep 错误：${proc.stderr.toString()}`;
+			// exitCode 2: 部分文件读取错误，但仍可能有有效匹配
+			if (proc.exitCode === 2) {
+				const parts: string[] = [];
+				if (stdout.trim()) parts.push(stdout.trim());
+				if (stderr.trim()) parts.push(`[警告] ${stderr.trim()}`);
+				return parts.join("\n") || "grep 错误：无法读取部分文件";
+			}
+			return `grep 错误：${stderr || "未知错误"}`;
 		} catch {
 			return "grep 执行失败（当前环境可能不支持 grep 命令）";
 		}
