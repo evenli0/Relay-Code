@@ -106,7 +106,15 @@ export class PlanState {
 
 	/** 构造注入消息 */
 	buildMessage(): import("./types").ChatMessage {
-		const content = `[当前计划]\n${this.render()}\n\n执行规则：\n- 按阶段顺序执行\n- dispatch 给子Agent 的任务描述必须准确\n- 子Agent 返回后检查其 keyFindings\n- 遇到障碍修改 plan 后 write 保存，系统下次自动采用新版本`;
+		const content = `[当前计划]
+${this.render()}
+
+动态编排规则（每轮注入，务必遵守）：
+- 每个未完成阶段：dispatch 一个子Agent 去执行，task 描述必须包含具体文件路径和验收标准
+- 阶段完成后必须 write 更新 plan.md：将该阶段的 - [ ] 改为 - [x]，并补充执行结果摘要
+- 子Agent 返回后检查其 keyFindings：如果发现新问题，追加到后续阶段或插入新阶段
+- 遇到子Agent 返回 error 时不要重试同一任务，修改 plan 调整路线或拆分该阶段
+- 全部阶段完成后 write 最终交付物，plan.md 将成为本次工作流的完整审计记录`;
 		return { role: "user" as const, content };
 	}
 
