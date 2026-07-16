@@ -23,16 +23,25 @@ import { MAX_REACT_ITERATIONS } from "./types";
  */
 export class Orchestrator {
 	private harness: Harness;
+	/** 跨轮对话历史。chat 模式复用同一 Orchestrator 实例时自然累积；单次模式每次 new 自然为空。 */
+	private messages: ChatMessage[] = [];
 
 	constructor(harness?: Harness) {
 		this.harness = harness ?? new Harness();
 	}
 
+	/** 重置对话历史（chat 模式 "/clear" 命令调用） */
+	resetConversation(): void {
+		this.messages = [];
+	}
+
 	async runReAct(userInput: string): Promise<string> {
-		const messages: ChatMessage[] = [
-			{ role: "system", content: buildSystemPrompt() },
-			{ role: "user", content: userInput },
-		];
+		// 首轮初始化 system prompt；后续轮复用历史中已有的 system prompt
+		if (this.messages.length === 0) {
+			this.messages.push({ role: "system", content: buildSystemPrompt() });
+		}
+		this.messages.push({ role: "user", content: userInput });
+
 		await saveDialogue("system", buildSystemPrompt());
 		await saveDialogue("user", userInput);
 
@@ -53,11 +62,11 @@ export class Orchestrator {
 				await saveDialogue("system", `[plan 注入]\n${pm.content}`);
 				showPlan(pm.content ?? "");
 			}
-			messages.push(...planMessages);
+			this.messages.push(...planMessages);
 
 			let response: LLMResponse;
 			try {
-				response = await callLLM(messages, ALL_TOOLS);
+				response = await callLLM(this.messages, ALL_TOOLS);
 			} catch (e: unknown) {
 				const err = unwrapError(e);
 				// AbortError: LLM 调用超时
@@ -159,13 +168,13 @@ export class Orchestrator {
 				const entry = parsed[ti];
 				if (!entry) continue;
 				const { tc } = entry;
-				messages.push({
+				this.messages.push({
 					role: "assistant",
 					content: null,
 					tool_calls: [tc],
 					reasoning_content: response.reasoning_content ?? null,
 				});
-				messages.push({
+				this.messages.push({
 					role: "tool",
 					content: results[ti] ?? "",
 					tool_call_id: tc.id,
