@@ -116,6 +116,11 @@ export class Orchestrator {
 					"完成",
 					(Date.now() - overallStart) / 1000,
 				);
+				// 将 assistant 文本回复也保留在对话历史中，供后续轮次引用
+				this.messages.push({
+					role: "assistant",
+					content: response.content ?? "",
+				});
 				await saveDialogue("assistant", response.content ?? "");
 				return response.content ?? "";
 			}
