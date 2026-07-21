@@ -1,7 +1,7 @@
-import { test, expect, mock, beforeEach } from "bun:test"
+import { beforeEach, expect, mock, test } from "bun:test"
 
 // Mock callLLM 模块
-const responseQueue: Array<{ content: string | null; tool_calls?: any[] }> = []
+const responseQueue: Array<{ content: string | null; tool_calls?: Record<string, unknown>[] }> = []
 const mockCallLLM = mock(async () => {
   const next = responseQueue.shift()
   if (next) return next
@@ -24,7 +24,6 @@ mock.module("../src/worktree", () => ({
 }))
 
 import { Harness } from "../src/harness"
-import type { ChatMessage } from "../src/types"
 
 beforeEach(() => {
   responseQueue.length = 0
@@ -32,6 +31,10 @@ beforeEach(() => {
   mockCreateWorktree.mockClear()
   mockRemoveWorktree.mockClear()
   mockGetChanges.mockClear()
+  // 恢复默认实现，防止上一个测试中 mockImplementation 的修改泄漏到后续测试
+  mockCreateWorktree.mockImplementation(async (slug: string) => `/tmp/test-wt-${slug}`)
+  mockGetChanges.mockImplementation(async (_path: string): Promise<string[]> => [])
+  mockRemoveWorktree.mockImplementation(async (_path: string) => {})
 })
 
 // =============================================

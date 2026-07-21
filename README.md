@@ -8,8 +8,8 @@
 [![CI](https://github.com/evenli0/Relay-Code/actions/workflows/ci.yml/badge.svg)](https://github.com/evenli0/Relay-Code/actions/workflows/ci.yml)
 [![CodeQL](https://github.com/evenli0/Relay-Code/actions/workflows/ci.yml/badge.svg?job=codeql)](https://github.com/evenli0/Relay-Code/actions/workflows/ci.yml)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.9-strict?logo=typescript)](https://www.typescriptlang.org/)
-[![Bun](https://img.shields.io/badge/Bun-1.3-black?logo=bun)](https://bun.sh)
-[![Tests](https://img.shields.io/badge/tests-43%20passing-2ea043)](https://github.com/evenli0/Relay-Code/actions)
+[![Bun](https://img.shields.io/badge/Bun-≥1.2.0-black?logo=bun)](https://bun.sh)
+[![Tests](https://img.shields.io/badge/tests-45%20passing-2ea043)](https://github.com/evenli0/Relay-Code/actions/workflows/ci.yml)
 [![Last Commit](https://img.shields.io/github/last-commit/evenli0/Relay-Code)](https://github.com/evenli0/Relay-Code)
 
 [English](README.md) | [中文](README.zh-CN.md)
@@ -70,6 +70,9 @@ flowchart TB
 | **Tools** | `src/tools.ts` | Tool definitions — read, write, grep, bash, dispatch |
 | **LLM Client** | `src/llm.ts` | DeepSeek/OpenAI-compatible API wrapper |
 | **Errors** | `src/errors.ts` | Unified error handling (unwrapError) |
+| **Display** | `src/display.ts` | ANSI terminal display — progress bars, colors, cards |
+| **Feedback** | `src/feedback.ts` | Lightweight stderr output, auto-silent on non-TTY |
+| **PlanState** | `src/plan-state.ts` | Structured plan state machine with phase tracking |
 
 ---
 
@@ -77,7 +80,7 @@ flowchart TB
 
 ### Prerequisites
 
-- [Bun](https://bun.sh) 1.3+
+- [Bun](https://bun.sh) ≥1.2.0
 - DeepSeek API key — [get one free](https://platform.deepseek.com)
 
 ### Setup
@@ -105,7 +108,7 @@ bun run dev
 ### Testing
 
 ```bash
-bun test                    # Unit tests — 43 tests, 0 failures
+bun test                    # Unit tests — 45 tests, 0 failures
 bun run test:integration    # Integration tests (git worktrees)
 bun run type-check          # TypeScript strict type checking
 bun run test:coverage       # Test coverage report
@@ -209,6 +212,7 @@ relay-code/
 │   ├── orchestrator.ts       # Main ReAct loop
 │   ├── harness.ts            # Facade — combines all components
 │   ├── plan-manager.ts       # Plan injection
+│   ├── plan-state.ts         # Structured plan state machine
 │   ├── message-assembler.ts  # Sub-agent message builder
 │   ├── tool-executor.ts      # Tool routing + worktree isolation
 │   ├── dispatcher.ts         # Dispatch + SubAgent
@@ -219,20 +223,25 @@ relay-code/
 │   ├── memory.ts             # Dialogue persistence
 │   ├── errors.ts             # Unified error handling
 │   ├── prompts.ts            # System prompt builder
+│   ├── display.ts            # ANSI terminal display + progress bars
+│   ├── feedback.ts           # Terminal feedback (stderr, TTY auto-detect)
 │   └── worktree.ts           # Git worktree management
-├── tests/                    # 43 unit tests
+├── tests/                    # 45 unit tests + integration
 │   ├── harness.test.ts
 │   ├── react.test.ts
 │   ├── memory.test.ts
 │   ├── tools.test.ts
 │   ├── helpers/
+│   │   └── sandbox.ts
 │   └── integration/
+│       └── worktree.test.ts
 ├── .github/
 │   ├── workflows/ci.yml      # CI with CodeQL
 │   ├── dependabot.yml        # Auto dependency updates
 │   ├── ISSUE_TEMPLATE/
 │   └── PULL_REQUEST_TEMPLATE.md
 ├── biome.json                # Lint / format config
+├── .env.example              # Environment configuration template
 ├── CHANGELOG.md              # Keep a Changelog
 ├── CONTRIBUTING.md           # Contribution guide
 ├── CODE_OF_CONDUCT.md
