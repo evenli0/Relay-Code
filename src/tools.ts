@@ -70,7 +70,7 @@ const writeTool: ToolDefinition = {
 	async execute(args) {
 		const path = String(args.path ?? "").trim();
 		if (!path) {
-			return "错误：write 缺少文件路径。请用 write(path=\"文件名\", content=...) 指定写入目标和内容。";
+			return '错误：write 缺少文件路径。请用 write(path="文件名", content=...) 指定写入目标和内容。';
 		}
 		const content = String(args.content ?? "");
 		try {

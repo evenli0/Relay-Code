@@ -162,21 +162,21 @@ export class Orchestrator {
 	 * 将多个 agent 的完成结果一起注入给 LLM，让它有全局视野做决策。
 	 */
 	private async processAgentBatch(dones: AgentEvent[]): Promise<void> {
-		const details = dones.map((d) => {
-			const role = d.agentRole ?? "未知";
-			const output = d.result?.output?.slice(0, 500) ?? "无输出";
-			const id = d.agentId?.slice(-8) ?? "";
-			const status = d.type === "agent_error" ? "❌ ERROR" : "✅ DONE";
-			return `### ${status} [${role}] (${id})\n${output}`;
-		}).join("\n\n---\n\n");
+		const details = dones
+			.map((d) => {
+				const role = d.agentRole ?? "未知";
+				const output = d.result?.output?.slice(0, 500) ?? "无输出";
+				const id = d.agentId?.slice(-8) ?? "";
+				const status = d.type === "agent_error" ? "❌ ERROR" : "✅ DONE";
+				return `### ${status} [${role}] (${id})\n${output}`;
+			})
+			.join("\n\n---\n\n");
 
 		const total = this.registry.size;
 		const running = this.registry.getRunning().length;
 
 		// 直接展示给用户，不依赖 LLM 合成
-		console.log(
-			`\n${"=".repeat(60)}`,
-		);
+		console.log(`\n${"=".repeat(60)}`);
 		console.log(
 			`📬 子 Agent 完成通知 — ${dones.length} 个完成，${running} 个运行中，共 ${total} 个`,
 		);
@@ -303,9 +303,7 @@ export class Orchestrator {
 				}
 				// 诊断日志：捕获主 Agent tool call 原始参数
 				const rawArgs = tc.function.arguments;
-				process.stderr.write(
-					`[主Agent诊断|${tc.function.name}] ${rawArgs}\n`,
-				);
+				process.stderr.write(`[主Agent诊断|${tc.function.name}] ${rawArgs}\n`);
 				return { tc, args };
 			});
 
