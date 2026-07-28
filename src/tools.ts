@@ -6,7 +6,6 @@ const isWindows = process.platform === "win32";
 
 export function resolveShell(): { bin: string; flag: string } {
 	if (!isWindows) return { bin: "bash", flag: "-c" };
-	// Windows: 探测 Git Bash
 	const gitBashPaths = [
 		"C:\\Program Files\\Git\\bin\\bash.exe",
 		"C:\\Program Files (x86)\\Git\\bin\\bash.exe",
@@ -14,17 +13,16 @@ export function resolveShell(): { bin: string; flag: string } {
 	for (const p of gitBashPaths) {
 		if (existsSync(p)) return { bin: p, flag: "-c" };
 	}
-	// fallback 到 cmd
 	return { bin: "cmd", flag: "/c" };
 }
 
 function resolveGrep(): { bin: string; args: string[] } | null {
-	if (!isWindows) return null; // Unix: 使用默认 grep
+	if (!isWindows) return null;
 	const gitUsrBin = "C:\\Program Files\\Git\\usr\\bin\\grep.exe";
 	if (existsSync(gitUsrBin)) {
 		return { bin: gitUsrBin, args: [] };
 	}
-	return null; // 使用 PowerShell fallback
+	return null;
 }
 
 /** read 工具：读取本地文件 */
@@ -70,9 +68,18 @@ const writeTool: ToolDefinition = {
 		},
 	},
 	async execute(args) {
-		const path = String(args.path ?? "");
+		const path = String(args.path ?? "").trim();
+		if (!path) {
+			return "错误：write 缺少文件路径。请用 write(path=\"文件名\", content=...) 指定写入目标和内容。";
+		}
 		const content = String(args.content ?? "");
 		try {
+			const lastSlash = path.lastIndexOf("/");
+			if (lastSlash > 0) {
+				const dir = path.substring(0, lastSlash);
+				const { mkdirSync } = await import("node:fs");
+				if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+			}
 			await Bun.write(path, content);
 			return `文件 ${path} 写入成功（${content.length} 字符）`;
 		} catch (e: unknown) {
@@ -100,7 +107,6 @@ const grepTool: ToolDefinition = {
 		const pattern = String(args.pattern ?? "");
 		const searchPath = args.path ? String(args.path) : ".";
 
-		// Windows: 尝试 Git Bash grep → PowerShell Select-String
 		if (isWindows) {
 			const gitGrep = resolveGrep();
 			if (gitGrep) {
@@ -110,7 +116,6 @@ const grepTool: ToolDefinition = {
 					const stderr = proc.stderr.toString();
 					if (proc.exitCode === 0) return stdout;
 					if (proc.exitCode === 1) return "未找到匹配";
-					// exitCode 2: 部分文件读取错误，但仍可能有有效匹配
 					if (proc.exitCode === 2) {
 						const parts: string[] = [];
 						if (stdout.trim()) parts.push(stdout.trim());
@@ -122,7 +127,6 @@ const grepTool: ToolDefinition = {
 					/* fall through */
 				}
 			}
-			// PowerShell fallback
 			try {
 				const psCmd = `Select-String -Pattern '${pattern}' -Path '${searchPath}\\*' -Recurse | ForEach-Object { "\\($_.Filename):\\($_.LineNumber):\\($_.Line.Trim())" }`;
 				const proc = Bun.spawnSync(["powershell", "-Command", psCmd]);
@@ -133,14 +137,12 @@ const grepTool: ToolDefinition = {
 			return "grep 执行失败（Windows 上未安装 Git Bash，且 PowerShell 搜索也失败）";
 		}
 
-		// Unix 原有逻辑
 		try {
 			const proc = Bun.spawnSync(["grep", "-rn", pattern, searchPath]);
 			const stdout = proc.stdout.toString();
 			const stderr = proc.stderr.toString();
 			if (proc.exitCode === 0) return stdout;
 			if (proc.exitCode === 1) return "未找到匹配";
-			// exitCode 2: 部分文件读取错误，但仍可能有有效匹配
 			if (proc.exitCode === 2) {
 				const parts: string[] = [];
 				if (stdout.trim()) parts.push(stdout.trim());
@@ -173,7 +175,7 @@ const bashTool: ToolDefinition = {
 		const shell = resolveShell();
 		try {
 			const proc = Bun.spawnSync([shell.bin, shell.flag, command], {
-				timeout: 30_000, // 30秒超时
+				timeout: 30_000,
 			});
 			return (
 				proc.stdout.toString() +

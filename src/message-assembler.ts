@@ -1,7 +1,16 @@
+import { arch, cwd, platform } from "node:process";
 import type { ChatMessage, DispatchConfig } from "./types";
 
-const SUB_AGENT_SYSTEM_PROMPT =
-	"你是一个子Agent。输出是返回值，不是对话。不要道歉，不要问用户。";
+const SUB_AGENT_SYSTEM_PROMPT = [
+	"你是一个子 Agent。你有 read/write/grep/bash 工具，可以自由使用它们完成任务。",
+	`环境: ${platform === "win32" ? "Windows" : platform} ${arch}, 工作目录 ${cwd()}`,
+	"",
+	"工作方式：",
+	"  1. 用工具完成你的分析/编辑任务（读写文件、搜索、执行命令都可以）。",
+	"  2. 全部完成后，不要再调任何工具，直接回复一段 JSON 作为工作汇报。",
+	"",
+	"汇报格式：使用任务描述中指定的 JSON schema。这就是你的最终交付物。",
+].join("\n");
 
 /**
  * 将 DispatchConfig 转为子Agent 的 ChatMessage[]
@@ -13,7 +22,6 @@ export async function assembleMessages(
 		{ role: "system", content: SUB_AGENT_SYSTEM_PROMPT },
 	];
 
-	// 前缀：preload 文件
 	for (const filePath of config.preload ?? []) {
 		try {
 			const file = Bun.file(filePath);
@@ -30,7 +38,6 @@ export async function assembleMessages(
 		}
 	}
 
-	// 后缀：编排Agent 的 prompt
 	let prompt = "";
 	if (config.prompt.instructions) {
 		messages.push({ role: "system", content: config.prompt.instructions });
@@ -38,28 +45,33 @@ export async function assembleMessages(
 	if (config.prompt.role) prompt += `角色：${config.prompt.role}\n`;
 	prompt += `任务：${config.prompt.task}\n`;
 
-	// 如果指定了 responseSchema，注入标准字段 + 任务特定字段
 	if (config.responseSchema) {
 		const schema = config.responseSchema as Record<string, unknown>;
 		const userProps =
 			(schema.properties as Record<string, unknown> | undefined) ?? {};
-		const STANDARD_FIELDS = new Set(["keyFindings", "decisions", "summary"]);
-		const userFields = Object.entries(userProps)
-			.filter(([k]) => !STANDARD_FIELDS.has(k))
-			.map(([k, v]: [string, unknown]) => {
-				const desc = (v as Record<string, unknown> | undefined)?.description;
-				return `      "${k}": ${JSON.stringify(desc ?? `${k}的内容`)}`;
-			})
-			.join(",\n");
-		const exampleJson = `{\n  "keyFindings": ["发现了 X 问题", "发现了 Y 问题"],\n  "decisions": ["决定做 A", "决定做 B"],\n  "summary": "一句话总结做了什么"${userFields ? `,\n${userFields}` : ""}\n}`;
-		prompt += `\n输出纯 JSON，不要 markdown 代码块，不要额外文字。格式如下：\n${exampleJson}\n`;
+		// 从实际 responseSchema 生成 example JSON，不硬编码字段
+		const fieldEntries = Object.entries(userProps).map(
+			([k, v]: [string, unknown]) => {
+				const desc =
+					(v as Record<string, unknown> | undefined)?.description ?? "";
+				return { key: k, desc };
+			},
+		);
+		if (fieldEntries.length > 0) {
+			const exampleLines = fieldEntries.map(
+				(f) => `  "${f.key}": ${JSON.stringify(f.desc || `${f.key}的内容`)}`,
+			);
+			const exampleJson = `{\n${exampleLines.join(",\n")}\n}`;
+			prompt += `\n全部工作完成后，最后回复一段 JSON 作为汇报。格式如下（不要 markdown 代码块）：\n${exampleJson}\n`;
+		} else {
+			prompt += `\n全部工作完成后，最后回复一段 JSON 作为汇报。格式：{"result": "你的工作总结"}\n`;
+		}
 	}
 
-	// 如果指定了 plan，告诉子Agent 完整的阶段编排
 	if (config.plan) {
 		prompt += `\n[计划上下文]\n`;
 		if (config.plan.goal) prompt += `总体目标：${config.plan.goal}\n`;
-		if (config.plan.phases && config.plan.phases.length > 0) {
+		if (config.plan.phases?.length) {
 			prompt += `阶段编排：\n`;
 			for (const phase of config.plan.phases) {
 				prompt += `  → ${phase.name}：${phase.description}\n`;

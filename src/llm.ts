@@ -21,7 +21,7 @@ const DEFAULT_MODEL = "deepseek-v4-flash";
 export async function callLLM(
 	messages: ChatMessage[],
 	tools?: ToolDefinition[],
-	options?: { signal?: AbortSignal },
+	options?: { signal?: AbortSignal; maxTokens?: number },
 ): Promise<LLMResponse> {
 	const apiKey = process.env.DEEPSEEK_API_KEY;
 	if (!apiKey) throw new Error("DEEPSEEK_API_KEY 环境变量未设置");
@@ -46,7 +46,7 @@ export async function callLLM(
 					model,
 					messages: apiMessages,
 					tools: apiTools,
-					max_tokens: 4096,
+					max_tokens: options?.maxTokens ?? 16000,
 				},
 				{ signal: options?.signal },
 			);

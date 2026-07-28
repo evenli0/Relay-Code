@@ -1,5 +1,8 @@
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import type { AgentRegistry } from "./agent-registry";
 import { elapsed, subAgentEnd, subAgentStart, toolResultLine } from "./display";
 import { unwrapError } from "./errors";
+import type { Inbox } from "./inbox";
 import { callLLM } from "./llm";
 import { saveDialogue } from "./memory";
 import { assembleMessages } from "./message-assembler";
@@ -77,6 +80,91 @@ export async function dispatch(
 	return result;
 }
 
+/** 任务文件目录 */
+const TASKS_DIR = ".relay/tasks";
+
+/**
+ * dispatchAsync — 异步火发模式
+ *
+ * 将任务配置写入文件 → 启动独立子 Agent 进程 → 立即返回。
+ * 子 Agent 完成后自动推入收件箱。
+ */
+export async function dispatchAsync(
+	config: DispatchConfig,
+	inbox: Inbox,
+	registry: AgentRegistry,
+	threadId: string,
+): Promise<{ status: string; agentId: string }> {
+	const agentId = `agent-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+	const role = config.phase ?? config.prompt.role ?? "子任务";
+	registry.register(agentId, role, threadId);
+
+	if (!existsSync(TASKS_DIR)) {
+		mkdirSync(TASKS_DIR, { recursive: true });
+	}
+
+	const taskPath = `${TASKS_DIR}/${agentId}.json`;
+	writeFileSync(taskPath, JSON.stringify(config, null, 2), "utf-8");
+
+	const proc = Bun.spawn(["bun", "run", "src/subagent-cli.ts", taskPath], {
+		onExit: (_proc, exitCode) => {
+			const resultPath = taskPath.replace(/\.json$/, ".result.json");
+			try {
+				if (existsSync(resultPath)) {
+					const result: SubAgentResult = JSON.parse(
+						readFileSync(resultPath, "utf-8"),
+					);
+					if (exitCode === 0 && result.status === "completed") {
+						registry.markDone(agentId, result.output?.slice(0, 200) ?? "完成");
+						inbox.push({
+							type: "agent_done",
+							threadId,
+							timestamp: Date.now(),
+							result,
+							agentRole: role,
+							agentId,
+						});
+					} else {
+						const err = result.output ?? `exit ${exitCode}`;
+						registry.markError(agentId, err);
+						inbox.push({
+							type: "agent_error",
+							threadId,
+							timestamp: Date.now(),
+							error: err,
+							agentRole: role,
+							agentId,
+						});
+					}
+				} else {
+					registry.markError(agentId, `exit ${exitCode}，无结果`);
+					inbox.push({
+						type: "agent_error",
+						threadId,
+						timestamp: Date.now(),
+						error: `进程退出 (exit ${exitCode})`,
+						agentRole: role,
+						agentId,
+					});
+				}
+			} catch (e) {
+				registry.markError(agentId, String(e));
+				inbox.push({
+					type: "agent_error",
+					threadId,
+					timestamp: Date.now(),
+					error: `读取结果失败: ${e}`,
+					agentRole: role,
+					agentId,
+				});
+			}
+		},
+	});
+	proc.unref();
+
+	return { status: "dispatched", agentId };
+}
+
 /**
  * 子Agent —— 一次性的 ReAct 执行器
  */
@@ -88,6 +176,12 @@ export class SubAgent {
 		private cwd?: string,
 		private maxRounds?: number,
 		private maxTimeMs?: number,
+		private onProgress?: (
+			round: number,
+			total: number,
+			action: string,
+			summary: string,
+		) => void,
 	) {}
 
 	async run(): Promise<SubAgentResult> {
@@ -109,7 +203,15 @@ export class SubAgent {
 
 		const iterLimit = this.maxRounds ?? 30;
 		let emptyResultRounds = 0;
+		let currentMaxTokens = 16000;
+
 		for (let i = 0; i < Math.min(iterLimit, MAX_REACT_ITERATIONS); i++) {
+			this.onProgress?.(
+				i + 1,
+				Math.min(iterLimit, MAX_REACT_ITERATIONS),
+				"思考中",
+				"等待 LLM 回复...",
+			);
 			await saveDialogue(
 				"system",
 				`[子Agent 轮次 ${i + 1}/${MAX_REACT_ITERATIONS}]`,
@@ -130,6 +232,7 @@ export class SubAgent {
 				_llmCalls++;
 				response = await callLLM(this.messages, availableTools, {
 					signal: controller.signal,
+					maxTokens: currentMaxTokens,
 				});
 			} catch (e: unknown) {
 				clearTimeout(timeout);
@@ -171,13 +274,35 @@ export class SubAgent {
 
 			const parsed = response.tool_calls.map((tc) => {
 				let args: Record<string, unknown> = {};
+				let parseOk = true;
 				try {
 					args = JSON.parse(tc.function.arguments);
-				} catch {
+				} catch (e) {
+					parseOk = false;
 					args = {};
+					process.stderr.write(
+						`[诊断|JSON解析失败] ${tc.function.name}: ${String(e).slice(0, 200)}\n`,
+					);
+					process.stderr.write(
+						`[诊断|原始参数前200字符] ${tc.function.arguments.slice(0, 200)}\n`,
+					);
 				}
-				return { tc, args };
+				// 诊断日志：捕获所有 tool call 原始参数（截断避免刷屏）
+				const rawArgs = tc.function.arguments;
+				const preview = rawArgs.length > 300 ? `${rawArgs.slice(0, 300)}...(截断)` : rawArgs;
+				process.stderr.write(
+					`[诊断|${tc.function.name}] ${parseOk ? "" : "(解析失败) "}${preview}\n`,
+				);
+				return { tc, args, parseOk };
 			});
+
+			// 截断检测：如果 JSON 解析失败，翻倍 token 重试
+			const truncated = parsed.some(p => !p.parseOk);
+			if (truncated && currentMaxTokens < 64000) {
+				currentMaxTokens *= 2;
+				process.stderr.write(`[诊断|截断重试] maxTokens 翻倍至 ${currentMaxTokens}\n`);
+				continue; // 不把损坏的响应加入对话历史，直接重试
+			}
 
 			_toolsUsed += parsed.length;
 			const results = await Promise.all(
@@ -193,6 +318,19 @@ export class SubAgent {
 					toolResultLine(tc.function.name, true, summary, Date.now() - t0);
 					return result;
 				}),
+			);
+
+			// 进度通知
+			const actions = parsed.map(({ tc }) => tc.function.name).join("+");
+			const s = results
+				.map((r) => (r?.length > 50 ? `${r.slice(0, 50)}...` : (r ?? "")))
+				.join(" | ")
+				.slice(0, 80);
+			this.onProgress?.(
+				i + 1,
+				Math.min(iterLimit, MAX_REACT_ITERATIONS),
+				actions,
+				s || "无输出",
 			);
 
 			// 空结果检测：全部为空时计数

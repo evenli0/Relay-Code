@@ -1,6 +1,8 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { AgentRegistry } from "./agent-registry";
 import { milestone } from "./display";
+import { Inbox } from "./inbox";
 import { saveDialogue } from "./memory";
 import { Orchestrator } from "./orchestrator";
 
@@ -29,14 +31,18 @@ function showHelp(): void {
 	console.log(`Relay Code v${VERSION}`);
 	console.log("");
 	console.log("Usage:");
-	console.log("  bun run src/index.ts <task>     Run the agent with a task");
-	console.log("  bun run src/index.ts --help      Show this help");
-	console.log("  bun run src/index.ts --version   Show version");
-	console.log("  bun run src/index.ts --chat      Interactive chat mode");
+	console.log("  bun run src/index.ts <task>        Run the agent with a task");
+	console.log("  bun run src/index.ts --help         Show this help");
+	console.log("  bun run src/index.ts --version      Show version");
+	console.log("  bun run src/index.ts --chat         Interactive chat mode");
+	console.log(
+		"  bun run src/index.ts --daemon       Event-driven agent cluster (async dispatch)",
+	);
 	console.log("");
 	console.log("Examples:");
 	console.log('  bun run src/index.ts "analyze the file structure"');
 	console.log("  bun run src/index.ts --chat");
+	console.log("  bun run src/index.ts --daemon");
 	console.log("");
 	console.log("Environment:");
 	console.log("  DEEPSEEK_API_KEY    Required. Your DeepSeek API key");
@@ -49,7 +55,9 @@ function showHelp(): void {
 }
 
 async function chatMode(): Promise<void> {
-	const orchestrator = new Orchestrator();
+	const inbox = new Inbox();
+	const registry = new AgentRegistry();
+	const orchestrator = new Orchestrator(inbox, registry);
 	const readline = (await import("node:readline")).createInterface({
 		input: process.stdin,
 		output: process.stdout,
@@ -72,6 +80,91 @@ async function chatMode(): Promise<void> {
 	}
 
 	readline.close();
+}
+
+/** daemon 模式：事件驱动循环 */
+async function daemonMode(): Promise<void> {
+	const inbox = new Inbox();
+	const registry = new AgentRegistry();
+	const orchestrator = new Orchestrator(inbox, registry);
+
+	console.log(
+		`Relay Code v${VERSION} — daemon mode. Agent cluster is running.\n`,
+	);
+	console.log("Commands: <task> | status | peek <id> | exit\n> ");
+
+	// stdin 监听：把每行输入推入收件箱
+	const readline = (await import("node:readline")).createInterface({
+		input: process.stdin,
+		output: process.stdout,
+	});
+
+	// 监听输入行
+	readline.on("line", (line: string) => {
+		const input = line.trim();
+		if (!input) {
+			process.stdout.write("> ");
+			return;
+		}
+		if (input === "exit") {
+			readline.close();
+			process.exit(0);
+		}
+
+		if (input === "status") {
+			const agents = registry.getAll();
+			if (agents.length === 0) {
+				console.log("当前没有运行中的子 Agent。");
+			} else {
+				console.log(registry.getSnapshot());
+			}
+			process.stdout.write("> ");
+			return;
+		}
+
+		if (input.startsWith("peek")) {
+			const targetId = input.slice(4).trim();
+			if (!targetId) {
+				// peek all: 列出所有 agent
+				const agents = registry.peekAll();
+				if (agents.length === 0) {
+					console.log("当前没有子 Agent。");
+				} else {
+					for (const a of agents) {
+						const shortId = a.id.slice(-8);
+						const p = a.progress;
+						const detail = p
+							? `第${p.round}轮 ${p.lastAction} — ${p.lastSummary}`
+							: "无进度数据";
+						console.log(`  [${a.status}] ${a.role} (${shortId}): ${detail}`);
+					}
+				}
+			} else {
+				// peek 特定 agent: 看时间线
+				const ctx = registry.peekAsContext(
+					targetId.length < 8
+						? ([...registry.getAll()].find((a) => a.id.endsWith(targetId))
+								?.id ?? targetId)
+						: targetId,
+				);
+				console.log(ctx);
+			}
+			process.stdout.write("> ");
+			return;
+		}
+
+		// 推入收件箱，orchestrator 的事件循环会处理
+		inbox.push({
+			type: "user_message",
+			threadId: "main",
+			timestamp: Date.now(),
+			content: input,
+		});
+		console.log(`[已入队] ${input.slice(0, 60)}...`);
+	});
+
+	// 事件循环（阻塞）
+	await orchestrator.start();
 }
 
 async function main() {
@@ -105,14 +198,21 @@ async function main() {
 		return;
 	}
 
+	if (arg === "--daemon") {
+		await daemonMode();
+		return;
+	}
+
 	// 3. 最终检查：无任务则显示帮助
 	if (!arg) {
 		showHelp();
 		process.exit(0);
 	}
 
-	// 4. 正常模式
-	const orchestrator = new Orchestrator();
+	// 4. 正常模式：单次异步执行
+	const inbox = new Inbox();
+	const registry = new AgentRegistry();
+	const orchestrator = new Orchestrator(inbox, registry);
 	await saveDialogue("user", arg);
 	const result = await orchestrator.runReAct(arg);
 	console.log(result);

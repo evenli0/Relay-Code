@@ -1,4 +1,7 @@
 import path from "node:path";
+import type { AgentRegistry } from "./agent-registry";
+import { dispatchAsync } from "./dispatcher";
+import type { Inbox } from "./inbox";
 import { ALL_TOOLS, resolveShell } from "./tools";
 import type { DispatchConfig, SubAgentResult } from "./types";
 
@@ -6,19 +9,23 @@ import type { DispatchConfig, SubAgentResult } from "./types";
  * ToolExecutor —— 工具执行路由
  *
  * 负责将工具调用分发到对应工具函数，支持 worktree 路径隔离。
- * dispatch 回调由外部注入（通常来自 Harness），使 SubAgent 也能调用 dispatch。
+ * dispatch 支持两种模式：
+ *   - 同步模式（dispatchFn 回调）：等待子 Agent 返回
+ *   - 异步模式（inbox + registry）：火发，不等
  */
 export class ToolExecutor {
 	dispatchFn?: (config: DispatchConfig) => Promise<SubAgentResult>;
+	inbox?: Inbox;
+	registry?: AgentRegistry;
+	threadId?: string;
 
 	async executeToolCall(
 		toolName: string,
 		args: Record<string, unknown>,
 		cwd?: string,
 	): Promise<string> {
-		// dispatch 委托给外部回调
+		// dispatch 工具
 		if (toolName === "dispatch") {
-			if (!this.dispatchFn) return "dispatch 不可用";
 			const task = String(args.task ?? "").trim();
 			const role = String(args.role ?? "").trim();
 			const format = String(args.format ?? "").trim();
@@ -27,7 +34,6 @@ export class ToolExecutor {
 			const planFile = Bun.file("plan.md");
 			const hasPlan = await planFile.exists();
 			if (!hasPlan && !args.exploratory) {
-				// 自动降级为探索模式
 				process.stderr.write("[dispatch] plan.md 不存在，自动切换为探索模式\n");
 			}
 			const config: DispatchConfig = {
@@ -47,11 +53,28 @@ export class ToolExecutor {
 					: { type: "object", properties: { result: { type: "string" } } },
 				max_rounds: 30,
 			};
-			const result = await this.dispatchFn(config);
-			if (result.structured) {
-				return `[dispatch 完成] 状态: ${result.status} 结构化结果: ${JSON.stringify(result.structured, null, 2)}`;
+
+			// 异步模式：火发，不等
+			if (this.inbox && this.registry && this.threadId) {
+				const { agentId } = await dispatchAsync(
+					config,
+					this.inbox,
+					this.registry,
+					this.threadId,
+				);
+				return `[dispatch 已发出] agentId: ${agentId}`;
 			}
-			return `[dispatch 完成] 状态: ${result.status} 输出: ${result.output}`;
+
+			// 同步模式：等返回（兼容旧行为）
+			if (this.dispatchFn) {
+				const result = await this.dispatchFn(config);
+				if (result.structured) {
+					return `[dispatch 完成] 状态: ${result.status} 结构化结果: ${JSON.stringify(result.structured, null, 2)}`;
+				}
+				return `[dispatch 完成] 状态: ${result.status} 输出: ${result.output}`;
+			}
+
+			return "dispatch 不可用";
 		}
 		// 路径解析：worktree 隔离下，相对路径 → worktree 内的绝对路径
 		let resolvedArgs = args;

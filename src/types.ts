@@ -93,6 +93,29 @@ export interface SubAgentResult {
 	metrics?: ExecutionMetrics;
 }
 
+// ---- 事件驱动通信类型 ----
+
+/** 事件类型：收件箱中的消息 */
+export type AgentEventType = "user_message" | "agent_done" | "agent_error";
+
+/** 事件：User 指令或子 Agent 完成 */
+export interface AgentEvent {
+	type: AgentEventType;
+	/** 所属线程 ID，用于关联指令和结果 */
+	threadId: string;
+	timestamp: number;
+	/** user_message 时：User 的原始输入 */
+	content?: string;
+	/** agent_done 时：子 Agent 的结构化结果 */
+	result?: SubAgentResult;
+	/** agent_error 时：错误描述 */
+	error?: string;
+	/** agent_done/agent_error 时：agent 的角色标识 */
+	agentRole?: string;
+	/** agent_done/agent_error 时：agent 的唯一 ID */
+	agentId?: string;
+}
+
 /** 运行时检查：判断原始参数是否为有效的 DispatchConfig */
 export function isDispatchConfig(
 	raw: Record<string, unknown>,
