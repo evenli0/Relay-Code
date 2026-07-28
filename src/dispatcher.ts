@@ -289,7 +289,8 @@ export class SubAgent {
 				}
 				// 诊断日志：捕获所有 tool call 原始参数（截断避免刷屏）
 				const rawArgs = tc.function.arguments;
-				const preview = rawArgs.length > 300 ? `${rawArgs.slice(0, 300)}...(截断)` : rawArgs;
+				const preview =
+					rawArgs.length > 300 ? `${rawArgs.slice(0, 300)}...(截断)` : rawArgs;
 				process.stderr.write(
 					`[诊断|${tc.function.name}] ${parseOk ? "" : "(解析失败) "}${preview}\n`,
 				);
@@ -297,10 +298,12 @@ export class SubAgent {
 			});
 
 			// 截断检测：如果 JSON 解析失败，翻倍 token 重试
-			const truncated = parsed.some(p => !p.parseOk);
+			const truncated = parsed.some((p) => !p.parseOk);
 			if (truncated && currentMaxTokens < 64000) {
 				currentMaxTokens *= 2;
-				process.stderr.write(`[诊断|截断重试] maxTokens 翻倍至 ${currentMaxTokens}\n`);
+				process.stderr.write(
+					`[诊断|截断重试] maxTokens 翻倍至 ${currentMaxTokens}\n`,
+				);
 				continue; // 不把损坏的响应加入对话历史，直接重试
 			}
 
