@@ -226,6 +226,15 @@ function connect() {
     const data = JSON.parse(e.data);
     if (data.type === "state") render(data);
     if (data.type === "event") addEvent(data.msg);
+    if (data.type === "sink") {
+      const ev = data.event;
+      if (ev.kind === "agent_done" || ev.kind === "agent_error" || ev.kind === "agent_dispatched") {
+        addEvent(ev.kind === "agent_done" ? `✅ ${ev.agentId} [${ev.role}] 完成` :
+                 ev.kind === "agent_error" ? `❌ ${ev.agentId} [${ev.role}] 错误` :
+                 `🚀 ${ev.agentId} [${ev.role}] 已派出`);
+      }
+      if (ev.kind === "llm_response") addEvent(`💬 ${ev.text.slice(0, 120)}`);
+    }
   };
 
   ws.onclose = () => { setTimeout(connect, 2000); };

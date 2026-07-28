@@ -18,6 +18,7 @@ export class ToolExecutor {
 	inbox?: Inbox;
 	registry?: AgentRegistry;
 	threadId?: string;
+	sink?: import("./sink").Sink;
 
 	async executeToolCall(
 		toolName: string,
@@ -61,6 +62,7 @@ export class ToolExecutor {
 					this.inbox,
 					this.registry,
 					this.threadId,
+					this.sink,
 				);
 				return `[dispatch 已发出] agentId: ${agentId}`;
 			}

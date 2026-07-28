@@ -3,6 +3,7 @@ import { dispatch, dispatchAsync } from "./dispatcher";
 import type { Inbox } from "./inbox";
 import { assembleMessages } from "./message-assembler";
 import { PlanManager } from "./plan-manager";
+import type { Sink } from "./sink";
 import { ToolExecutor } from "./tool-executor";
 import type { ChatMessage, DispatchConfig, SubAgentResult } from "./types";
 
@@ -31,6 +32,11 @@ export class Harness {
 			this.executor.registry = registry;
 			this.executor.threadId = threadId;
 		}
+	}
+
+	/** 注入 Sink，传递到 ToolExecutor → dispatchAsync */
+	setSink(sink: Sink): void {
+		this.executor.sink = sink;
 	}
 
 	/** 更新 threadId（每次新对话时） */
@@ -64,7 +70,7 @@ export class Harness {
 		if (!this._inbox || !this._registry || !this._threadId) {
 			throw new Error("dispatchFireAndForget 需要 inbox + registry + threadId");
 		}
-		return dispatchAsync(config, this._inbox, this._registry, this._threadId);
+		return dispatchAsync(config, this._inbox, this._registry, this._threadId, this.executor.sink);
 	}
 
 	/** 拼装子Agent 消息（测试用） */

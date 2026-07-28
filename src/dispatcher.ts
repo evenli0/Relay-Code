@@ -1,4 +1,5 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import type { Sink } from "./sink";
 import type { AgentRegistry } from "./agent-registry";
 import { elapsed, subAgentEnd, subAgentStart, toolResultLine } from "./display";
 import { unwrapError } from "./errors";
@@ -94,6 +95,7 @@ export async function dispatchAsync(
 	inbox: Inbox,
 	registry: AgentRegistry,
 	threadId: string,
+	sink?: Sink,
 ): Promise<{ status: string; agentId: string }> {
 	const agentId = `agent-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
 	const role = config.phase ?? config.prompt.role ?? "子任务";
@@ -116,6 +118,7 @@ export async function dispatchAsync(
 					);
 					if (exitCode === 0 && result.status === "completed") {
 						registry.markDone(agentId, result.output?.slice(0, 200) ?? "完成");
+						if (sink) sink.emit({ kind: "agent_done", agentId, role, output: result.output ?? "" });
 						inbox.push({
 							type: "agent_done",
 							threadId,
@@ -127,6 +130,7 @@ export async function dispatchAsync(
 					} else {
 						const err = result.output ?? `exit ${exitCode}`;
 						registry.markError(agentId, err);
+						if (sink) sink.emit({ kind: "agent_error", agentId, role, error: err });
 						inbox.push({
 							type: "agent_error",
 							threadId,

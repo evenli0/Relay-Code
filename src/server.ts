@@ -10,9 +10,37 @@
  */
 import type { AgentRegistry } from "./agent-registry";
 import type { Inbox } from "./inbox";
+import type { Sink, SinkEvent } from "./sink";
 
 const _events: string[] = [];
 const _wsClientsAny = new Set<{ send(data: string): void }>();
+
+export function createWsSink(): Sink {
+	return {
+		emit(e: SinkEvent) {
+			const time = new Date().toLocaleTimeString("zh-CN", { hour12: false });
+			const label = eventLabel(e);
+			_events.push(`[${time}] ${label}`);
+			if (_events.length > 100) _events.shift();
+			// 广播 Sink 事件到 WebSocket 客户端
+			const payload = JSON.stringify({ type: "sink", event: e });
+			for (const ws of _wsClientsAny) {
+				try { ws.send(payload); } catch { /* ignore */ }
+			}
+		},
+	};
+}
+
+function eventLabel(e: SinkEvent): string {
+	switch (e.kind) {
+		case "agent_dispatched": return `🚀 ${e.agentId} [${e.role}] 已派出`;
+		case "agent_done": return `✅ ${e.agentId} [${e.role}] 完成`;
+		case "agent_error": return `❌ ${e.agentId} [${e.role}] 错误`;
+		case "llm_response": return `💬 ${e.text.slice(0, 80)}`;
+		case "notice": return `[${e.level}] ${e.text}`;
+		default: return e.kind;
+	}
+}
 
 export function pushEvent(msg: string): void {
 	const time = new Date().toLocaleTimeString("zh-CN", { hour12: false });

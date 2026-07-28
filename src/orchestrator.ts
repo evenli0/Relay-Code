@@ -14,6 +14,7 @@ import { Inbox } from "./inbox";
 import { callLLM } from "./llm";
 import { saveDialogue } from "./memory";
 import { buildSystemPrompt } from "./prompts";
+import type { Sink } from "./sink";
 import { ALL_TOOLS } from "./tools";
 import type { AgentEvent, ChatMessage, LLMResponse } from "./types";
 import { MAX_REACT_ITERATIONS } from "./types";
@@ -36,6 +37,16 @@ export class Orchestrator {
 	private inbox: Inbox;
 	private registry: AgentRegistry;
 	private currentThreadId: string;
+	private sink: Sink | null = null;
+
+	setSink(s: Sink): void {
+		this.sink = s;
+		this.harness.setSink(s);
+	}
+
+	private emit(e: { kind: string; [key: string]: unknown }): void {
+		if (this.sink) this.sink.emit(e as never);
+	}
 
 	constructor(inbox?: Inbox, registry?: AgentRegistry, threadId?: string) {
 		this.inbox = inbox ?? new Inbox();
@@ -153,6 +164,7 @@ export class Orchestrator {
 		// 标准 ReAct 循环
 		const result = await this.reactLoop();
 		console.log(`\n${result}\n`);
+		this.emit({ kind: "llm_response", text: result });
 		process.stdout.write("> ");
 	}
 

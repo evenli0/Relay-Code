@@ -89,6 +89,39 @@ async function daemonMode(): Promise<void> {
 	const registry = new AgentRegistry();
 	const orchestrator = new Orchestrator(inbox, registry);
 
+	// Sink 事件总线
+	const { MultiSink } = await import("./sink");
+	const { createWsSink } = await import("./server");
+	const multiSink = new MultiSink();
+
+	// Terminal Sink: CLI 输出
+	multiSink.add({
+		emit(e: any) {
+			switch (e.kind) {
+				case "llm_response":
+					console.log(`
+${e.text}
+`);
+					process.stdout.write("> ");
+					break;
+				case "agent_done":
+					console.log("✅ [" + e.role + "] 完成: " + (e.output || "").slice(0, 100));
+					break;
+				case "agent_error":
+					console.log("❌ [" + e.role + "] 错误: " + (e.error || "").slice(0, 100));
+					break;
+				case "agent_dispatched":
+					console.log("🚀 [" + e.role + "] 已派出: " + (e.task || "").slice(0, 80));
+					break;
+				case "notice":
+					console.log("[" + e.level + "] " + e.text);
+					break;
+			}
+		},
+	});
+	multiSink.add(createWsSink());
+	orchestrator.setSink(multiSink);
+
 	// 启动 Web Dashboard
 	const { startServer } = await import("./server");
 	startServer(3000, registry, inbox);
