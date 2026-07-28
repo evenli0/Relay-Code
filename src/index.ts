@@ -58,6 +58,10 @@ async function chatMode(): Promise<void> {
 	const inbox = new Inbox();
 	const registry = new AgentRegistry();
 	const orchestrator = new Orchestrator(inbox, registry);
+
+	// 启动 Web Dashboard
+	const { startServer } = await import("./server");
+	startServer(3000, registry, inbox);
 	const readline = (await import("node:readline")).createInterface({
 		input: process.stdin,
 		output: process.stdout,
@@ -89,7 +93,7 @@ async function daemonMode(): Promise<void> {
 	const orchestrator = new Orchestrator(inbox, registry);
 
 	console.log(
-		`Relay Code v${VERSION} — daemon mode. Agent cluster is running.\n`,
+		`Relay Code v${VERSION} — daemon mode — Dashboard: http://localhost:3000.\n`,
 	);
 	console.log("Commands: <task> | status | peek <id> | exit\n> ");
 

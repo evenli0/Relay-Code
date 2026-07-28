@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Relay Agent Cluster</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --card: #161b22;
+    --border: #30363d;
+    --text: #c9d1d9;
+    --dim: #8b949e;
+    --running: #3fb950;
+    --done: #58a6ff;
+    --error: #f85149;
+    --accent: #7c3aed;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 20px;
+  }
+  .header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+    padding: 12px 16px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+  }
+  .header h1 { font-size: 18px; font-weight: 600; }
+  .stats {
+    display: flex;
+    gap: 20px;
+    font-size: 14px;
+  }
+  .stat { display: flex; align-items: center; gap: 6px; }
+  .stat .dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+  }
+  .dot.running { background: var(--running); }
+  .dot.done { background: var(--done); }
+  .dot.error { background: var(--error); }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px;
+    transition: border-color 0.2s;
+  }
+  .card.running { border-left: 3px solid var(--running); }
+  .card.done { border-left: 3px solid var(--done); }
+  .card.error { border-left: 3px solid var(--error); }
+  .card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+  }
+  .card-role { font-weight: 600; font-size: 14px; }
+  .card-status {
+    font-size: 12px;
+    padding: 2px 8px;
+    border-radius: 12px;
+  }
+  .card-status.running { background: rgba(63,185,80,0.15); color: var(--running); }
+  .card-status.done { background: rgba(88,166,255,0.15); color: var(--done); }
+  .card-status.error { background: rgba(248,81,73,0.15); color: var(--error); }
+  .card-id { font-size: 11px; color: var(--dim); margin-bottom: 6px; }
+  .card-action {
+    font-size: 13px;
+    color: var(--dim);
+    margin-bottom: 4px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .card-round { font-size: 12px; color: var(--dim); }
+  .progress-bar {
+    width: 100%;
+    height: 4px;
+    background: var(--border);
+    border-radius: 2px;
+    margin: 8px 0;
+    overflow: hidden;
+  }
+  .progress-fill {
+    height: 100%;
+    background: var(--running);
+    border-radius: 2px;
+    transition: width 0.3s;
+  }
+  .section-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--dim);
+    margin-bottom: 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .events {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 14px;
+    margin-bottom: 16px;
+    max-height: 120px;
+    overflow-y: auto;
+  }
+  .event { font-size: 12px; color: var(--dim); padding: 2px 0; }
+  .cmd-bar {
+    display: flex;
+    gap: 8px;
+  }
+  .cmd-bar input {
+    flex: 1;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 10px 14px;
+    color: var(--text);
+    font-size: 14px;
+    outline: none;
+  }
+  .cmd-bar input:focus { border-color: var(--accent); }
+  .cmd-bar button {
+    background: var(--accent);
+    color: white;
+    border: none;
+    border-radius: 6px;
+    padding: 10px 20px;
+    font-size: 14px;
+    cursor: pointer;
+  }
+  .cmd-bar button:hover { opacity: 0.9; }
+  .empty {
+    text-align: center;
+    color: var(--dim);
+    padding: 40px;
+    font-size: 14px;
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>🖥 Relay Agent Cluster</h1>
+  <div class="stats">
+    <div class="stat"><span class="dot running"></span> 运行中: <strong id="stat-running">0</strong></div>
+    <div class="stat"><span class="dot done"></span> 完成: <strong id="stat-done">0</strong></div>
+    <div class="stat"><span class="dot error"></span> 错误: <strong id="stat-error">0</strong></div>
+  </div>
+</div>
+
+<div class="section-title">📋 Agent 看板</div>
+<div class="grid" id="grid"><div class="empty">等待第一个子 Agent...</div></div>
+
+<div class="section-title">📢 最近事件</div>
+<div class="events" id="events"><div class="event">等待指令...</div></div>
+
+<div class="cmd-bar">
+  <input type="text" id="cmd" placeholder="派一个子agent分析 src/tools.ts，把报告写入 docs/analysis.md" />
+  <button onclick="sendCmd()">发送</button>
+</div>
+
+<script>
+const STATUS_CN = { running: "运行中", done: "已完成", error: "错误" };
+const STATUS_EMOJI = { running: "🔄", done: "✅", error: "❌" };
+
+function renderCard(a) {
+  const pct = a.progress ? Math.round((a.progress.round / (a.progress.totalRounds || 30)) * 100) : 0;
+  return `
+    <div class="card ${a.status}">
+      <div class="card-header">
+        <span class="card-role">${STATUS_EMOJI[a.status] || ""} ${a.role}</span>
+        <span class="card-status ${a.status}">${STATUS_CN[a.status] || a.status}</span>
+      </div>
+      <div class="card-id">ID: ${a.id}</div>
+      ${a.status === "running" ? `<div class="progress-bar"><div class="progress-fill" style="width:${pct}%"></div></div>` : ""}
+      ${a.progress ? `<div class="card-round">第 ${a.progress.round}/${a.progress.totalRounds || 30} 轮 — ${a.progress.lastAction}</div>` : ""}
+      ${a.summary ? `<div class="card-action">${a.summary.slice(0, 80)}</div>` : ""}
+    </div>`;
+}
+
+function render(state) {
+  document.getElementById("stat-running").textContent = state.running;
+  document.getElementById("stat-done").textContent = state.done;
+  document.getElementById("stat-error").textContent = state.errors;
+
+  const grid = document.getElementById("grid");
+  if (!state.agents || state.agents.length === 0) {
+    grid.innerHTML = '<div class="empty">等待第一个子 Agent...</div>';
+  } else {
+    grid.innerHTML = state.agents.map(renderCard).join("");
+  }
+}
+
+function addEvent(msg) {
+  const el = document.getElementById("events");
+  el.innerHTML += `<div class="event">${msg}</div>`;
+  el.scrollTop = el.scrollHeight;
+  // keep last 20
+  while (el.children.length > 20) el.firstChild.remove();
+}
+
+let ws;
+function connect() {
+  const proto = location.protocol === "https:" ? "wss" : "ws";
+  ws = new WebSocket(`${proto}://${location.host}/ws`);
+
+  ws.onmessage = (e) => {
+    const data = JSON.parse(e.data);
+    if (data.type === "state") render(data);
+    if (data.type === "event") addEvent(data.msg);
+  };
+
+  ws.onclose = () => { setTimeout(connect, 2000); };
+}
+
+function sendCmd() {
+  const input = document.getElementById("cmd");
+  const cmd = input.value.trim();
+  if (!cmd) return;
+  input.value = "";
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send("cmd:" + cmd);
+  }
+  // also POST as fallback
+  fetch("/api/cmd", { method: "POST", body: cmd });
+}
+
+document.getElementById("cmd").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") sendCmd();
+});
+
+// initial load
+fetch("/api/state").then(r => r.json()).then(render);
+fetch("/api/events").then(r => r.json()).then(events => {
+  events.forEach(addEvent);
+});
+connect();
+</script>
+</body>
+</html>
