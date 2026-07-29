@@ -1,4 +1,5 @@
 import { existsSync, readFileSync } from "node:fs";
+import type { ActorHandle } from "./actor-handle";
 
 /**
  * AgentRegistry —— 子 Agent 状态追踪
@@ -7,6 +8,8 @@ import { existsSync, readFileSync } from "node:fs";
  *   L1: getSnapshot() — 一行状态栏，不进 LLM 上下文
  *   L2: peek(id)     — 近期时间线，按需注入 LLM
  *   L3: readConversation(id) — 完整对话文件，深度排查用
+ *
+ * Actor 模式：注册常驻 ActorHandle，支持 sendToActor() 直接对话。
  */
 
 // ─── 类型 ───────────────────────────────────────────
@@ -66,6 +69,7 @@ interface AgentState {
 
 export class AgentRegistry {
 	private agents = new Map<string, AgentState>();
+	private actorHandles = new Map<string, ActorHandle>();
 
 	// ── 生命周期 ─────────────────────────────────────
 
@@ -78,6 +82,65 @@ export class AgentRegistry {
 			startedAt: Date.now(),
 			recentHistory: [],
 		});
+	}
+
+	/** Actor 模式注册：存储 ActorHandle 供后续 sendToActor */
+	registerActor(
+		id: string,
+		role: string,
+		threadId: string,
+		handle: ActorHandle,
+	): void {
+		this.agents.set(id, {
+			id,
+			role,
+			threadId,
+			status: "running",
+			startedAt: Date.now(),
+			recentHistory: [],
+		});
+		this.actorHandles.set(id, handle);
+	}
+
+	/** 更新子 Agent 进度（内存中，供 peek 使用） */
+	updateProgress(
+		id: string,
+		round: number,
+		action: string,
+		summary: string,
+	): void {
+		const a = this.agents.get(id);
+		if (!a) return;
+		a.recentHistory.push({
+			round,
+			timestamp: Date.now(),
+			action,
+			result: summary.slice(0, 100),
+		});
+		if (a.recentHistory.length > 20) a.recentHistory.shift();
+	}
+
+	/** 获取 Actor 的遥控器（供人类/web 直接对话） */
+	getHandle(id: string): ActorHandle | undefined {
+		// 支持短 ID 匹配
+		if (!this.actorHandles.has(id)) {
+			for (const [fullId, handle] of this.actorHandles) {
+				if (fullId.endsWith(id)) return handle;
+			}
+			return undefined;
+		}
+		return this.actorHandles.get(id);
+	}
+
+	/** 人类/main 直接给 Actor 发消息 */
+	sendToActor(
+		agentId: string,
+		msg: import("./actor").ActorInput,
+	): string | null {
+		const handle = this.getHandle(agentId);
+		if (!handle) return `Actor ${agentId} 不存在或不是 Actor 模式`;
+		handle.send(msg);
+		return null; // null = 成功，string = 错误消息
 	}
 
 	markDone(id: string, summary: string): void {

@@ -1,4 +1,5 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { ActorHandle } from "./actor-handle";
 import type { AgentRegistry } from "./agent-registry";
 import { elapsed, subAgentEnd, subAgentStart, toolResultLine } from "./display";
 import { unwrapError } from "./errors";
@@ -96,9 +97,66 @@ export async function dispatchAsync(
 	registry: AgentRegistry,
 	threadId: string,
 	sink?: Sink,
+	mode: "oneshot" | "actor" = "oneshot",
 ): Promise<{ status: string; agentId: string }> {
 	const agentId = `agent-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
 	const role = config.phase ?? config.prompt.role ?? "子任务";
+
+	// ── Actor 路径 ────────────────────────────────────
+	if (mode === "actor") {
+		const handle = new ActorHandle(agentId, config);
+		registry.registerActor(agentId, role, threadId, handle);
+
+		handle.onOutput = (msg) => {
+			if (msg.kind === "progress") {
+				registry.updateProgress(agentId, msg.round, msg.action, msg.summary);
+				if (sink)
+					sink.emit({
+						kind: "agent_progress",
+						agentId,
+						round: msg.round,
+						action: msg.action,
+					});
+			}
+			if (msg.kind === "task_done") {
+				registry.markDone(agentId, msg.output.slice(0, 200));
+				if (sink)
+					sink.emit({ kind: "agent_done", agentId, role, output: msg.output });
+				inbox.push({
+					type: "agent_done",
+					threadId,
+					timestamp: Date.now(),
+					result: { status: "completed", output: msg.output },
+					agentRole: role,
+					agentId,
+				});
+			}
+			if (msg.kind === "task_error") {
+				registry.markError(agentId, msg.error);
+				if (sink)
+					sink.emit({ kind: "agent_error", agentId, role, error: msg.error });
+				inbox.push({
+					type: "agent_error",
+					threadId,
+					timestamp: Date.now(),
+					error: msg.error,
+					agentRole: role,
+					agentId,
+				});
+			}
+		};
+
+		if (sink)
+			sink.emit({
+				kind: "agent_dispatched",
+				agentId,
+				role,
+				task: config.prompt.task,
+			});
+		return { status: "actor_started", agentId };
+	}
+
+	// ── Oneshot 路径（现有逻辑，不变）────────────────────
 	registry.register(agentId, role, threadId);
 
 	if (!existsSync(TASKS_DIR)) {
