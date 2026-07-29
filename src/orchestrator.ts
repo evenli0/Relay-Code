@@ -163,9 +163,8 @@ export class Orchestrator {
 
 		// 标准 ReAct 循环
 		const result = await this.reactLoop();
-		console.log(`\n${result}\n`);
 		this.emit({ kind: "llm_response", text: result });
-		process.stdout.write("> ");
+		// prompt 已在 TerminalSink 中输出
 	}
 
 	/**
@@ -211,9 +210,9 @@ export class Orchestrator {
 		// 让 LLM 给出简要总结（而不是完整 reactLoop）
 		const result = await this.reactLoop();
 		if (result && !result.startsWith("任务未在限定轮次")) {
-			console.log(`💬 ${result}\n`);
+			this.emit({ kind: "llm_response", text: result });
 		}
-		process.stdout.write("> ");
+		// prompt 已在 TerminalSink 中输出
 	}
 
 	// ─── ReAct 循环（核心逻辑不变）────────────────────────────
