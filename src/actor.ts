@@ -83,103 +83,113 @@ const state: {
 process.stdout.write(`${JSON.stringify({ kind: "ready" })}\n`);
 
 // ─── 事件循环：从 stdin 读 JSONL，永不退出 ─────────
-const rl = process.stdin;
+const decoder = new TextDecoder();
+let stdinBuf = "";
 
-for await (const line of rl) {
-	const trimmed = line.trim();
-	if (!trimmed) continue;
+for await (const chunk of process.stdin) {
+	stdinBuf += decoder.decode(chunk, { stream: true });
+	const lines = stdinBuf.split("\n");
+	stdinBuf = lines.pop() ?? ""; // 最后一段可能不完整
 
-	let msg: ActorInput;
-	try {
-		msg = JSON.parse(trimmed) as ActorInput;
-	} catch {
-		process.stderr.write(`[actor] 无效 JSON: ${trimmed.slice(0, 80)}\n`);
-		continue;
-	}
+	for (const line of lines) {
+		const trimmed = line.trim();
+		if (!trimmed) continue;
 
-	switch (msg.kind) {
-		case "task": {
-			const taskMessages = [...state.messages];
-			taskMessages.push({ role: "user", content: msg.content });
+		let msg: ActorInput;
+		try {
+			msg = JSON.parse(trimmed) as ActorInput;
+		} catch {
+			process.stderr.write(`[actor] 无效 JSON: ${trimmed.slice(0, 80)}\n`);
+			continue;
+		}
 
-			const agent = new SubAgent(
-				taskMessages,
-				state.tools,
-				executor,
-				undefined,
-				initialConfig.max_rounds ?? MAX_REACT_ITERATIONS,
-				initialConfig.max_time_ms,
-				(round, _total, action, summary) => {
-					// 进度通知 → 父进程
+		switch (msg.kind) {
+			case "task": {
+				const taskMessages = [...state.messages];
+				taskMessages.push({ role: "user", content: msg.content });
+
+				const agent = new SubAgent(
+					taskMessages,
+					state.tools,
+					executor,
+					undefined,
+					initialConfig.max_rounds ?? MAX_REACT_ITERATIONS,
+					initialConfig.max_time_ms,
+					(round, _total, action, summary) => {
+						// 进度通知 → 父进程
+						process.stdout.write(
+							`${JSON.stringify({ kind: "progress", round, action, summary })}\n`,
+						);
+					},
+				);
+
+				const result = await agent.run();
+				if (result.status === "completed") {
 					process.stdout.write(
-						`${JSON.stringify({ kind: "progress", round, action, summary })}\n`,
+						`${JSON.stringify({ kind: "task_done", taskId: msg.taskId, output: result.output, status: "completed" })}\n`,
 					);
-				},
-			);
-
-			const result = await agent.run();
-			if (result.status === "completed") {
-				process.stdout.write(
-					`${JSON.stringify({ kind: "task_done", taskId: msg.taskId, output: result.output, status: "completed" })}\n`,
-				);
-			} else {
-				process.stdout.write(
-					`${JSON.stringify({ kind: "task_error", taskId: msg.taskId, error: result.output })}\n`,
-				);
-			}
-			break;
-		}
-
-		case "ask": {
-			// 轻量问答：单轮 LLM，不走完整 ReAct
-			const askMessages = [...state.messages];
-			askMessages.push({ role: "user", content: msg.content });
-			try {
-				const response = await callLLM(askMessages, []);
-				const reply = response.content ?? "";
-				process.stdout.write(
-					`${JSON.stringify({ kind: "ask_reply", askId: msg.askId, content: reply })}\n`,
-				);
-			} catch (e) {
-				process.stdout.write(
-					`${JSON.stringify({ kind: "ask_reply", askId: msg.askId, content: `错误: ${e}` })}\n`,
-				);
-			}
-			break;
-		}
-
-		case "configure": {
-			if (msg.tools) state.tools = msg.tools;
-			if (msg.systemPrompt) {
-				// 替换或追加 system prompt
-				const sysIdx = state.messages.findIndex((m) => m.role === "system");
-				if (sysIdx >= 0) {
-					state.messages[sysIdx] = {
-						role: "system",
-						content: msg.systemPrompt,
-					};
 				} else {
-					state.messages.unshift({ role: "system", content: msg.systemPrompt });
+					process.stdout.write(
+						`${JSON.stringify({ kind: "task_error", taskId: msg.taskId, error: result.output })}\n`,
+					);
 				}
+				break;
 			}
-			process.stdout.write(`${JSON.stringify({ kind: "configured" })}\n`);
-			break;
-		}
 
-		case "context": {
-			state.context = { ...state.context, ...msg.context };
-			break;
-		}
+			case "ask": {
+				// 轻量问答：单轮 LLM，不走完整 ReAct
+				const askMessages = [...state.messages];
+				askMessages.push({ role: "user", content: msg.content });
+				try {
+					const response = await callLLM(askMessages, []);
+					const reply = response.content ?? "";
+					process.stdout.write(
+						`${JSON.stringify({ kind: "ask_reply", askId: msg.askId, content: reply })}\n`,
+					);
+				} catch (e) {
+					process.stdout.write(
+						`${JSON.stringify({ kind: "ask_reply", askId: msg.askId, content: `错误: ${e}` })}\n`,
+					);
+				}
+				break;
+			}
 
-		case "shutdown": {
-			process.exit(0);
-			break;
-		}
+			case "configure": {
+				if (msg.tools) state.tools = msg.tools;
+				if (msg.systemPrompt) {
+					// 替换或追加 system prompt
+					const sysIdx = state.messages.findIndex((m) => m.role === "system");
+					if (sysIdx >= 0) {
+						state.messages[sysIdx] = {
+							role: "system",
+							content: msg.systemPrompt,
+						};
+					} else {
+						state.messages.unshift({
+							role: "system",
+							content: msg.systemPrompt,
+						});
+					}
+				}
+				process.stdout.write(`${JSON.stringify({ kind: "configured" })}\n`);
+				break;
+			}
 
-		default: {
-			process.stderr.write(
-				`[actor] 未知消息类型: ${(msg as { kind: string }).kind}\n`,
-			);
+			case "context": {
+				state.context = { ...state.context, ...msg.context };
+				break;
+			}
+
+			case "shutdown": {
+				process.exit(0);
+				break;
+			}
+
+			default: {
+				process.stderr.write(
+					`[actor] 未知消息类型: ${(msg as { kind: string }).kind}\n`,
+				);
+			}
 		}
 	}
 }
