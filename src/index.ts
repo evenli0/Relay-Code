@@ -145,6 +145,10 @@ ${e.text}
 		output: process.stdout,
 	});
 
+	// talk 模式状态
+	let talkTarget: string | null = null;
+	let talkHandle: import("./actor-handle").ActorHandle | null = null;
+
 	// 监听输入行
 	readline.on("line", async (line: string) => {
 		const input = line.trim();
@@ -242,32 +246,30 @@ ${e.text}
 				process.stdout.write("> ");
 				return;
 			}
-			// 暂停 stdin 监听，进入对话模式
-			readline.pause();
+			// 设置 talk 模式标记 — 后续输入直接发给 Actor
+			talkTarget = targetId;
+			talkHandle = handle;
 			console.log(
-				`\n进入 Actor ${targetId.slice(-8)} 对话模式 — 输入 /exit 退出\n`,
+				`
+进入 Actor ${targetId.slice(-8)} 对话模式 — 输入 /exit 退出
+`,
 			);
-			const talkRl = (await import("node:readline")).createInterface({
-				input: process.stdin,
-				output: process.stdout,
-				prompt: `[${targetId.slice(-8)}] > `,
-			});
-			talkRl.prompt();
-			for await (const talkLine of talkRl) {
-				const msg = talkLine.trim();
-				if (!msg) {
-					talkRl.prompt();
-					continue;
-				}
-				if (msg === "/exit") break;
-				const reply = await handle.ask(msg, "human");
-				console.log(`[${targetId.slice(-8)}] ${reply}`);
-				talkRl.prompt();
+			process.stdout.write(`[${targetId.slice(-8)}] > `);
+			return;
+		}
+
+		// talk 模式中：输入发给 Actor，不推 inbox
+		if (talkTarget && talkHandle) {
+			if (input === "/exit") {
+				console.log("已退出对话模式\n");
+				talkTarget = null;
+				talkHandle = null;
+				process.stdout.write("> ");
+				return;
 			}
-			talkRl.close();
-			console.log("已退出对话模式\n");
-			readline.resume();
-			process.stdout.write("> ");
+			const reply = await talkHandle.ask(input, "human");
+			console.log(`[${talkTarget.slice(-8)}] ${reply}`);
+			process.stdout.write(`[${talkTarget.slice(-8)}] > `);
 			return;
 		}
 
