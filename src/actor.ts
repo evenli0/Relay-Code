@@ -138,36 +138,25 @@ for await (const chunk of process.stdin) {
 			}
 
 			case "ask": {
-				// 轻量问答：单轮 LLM，不走完整 ReAct
-				// 用干净上下文：只保留 system prompt + 最近几轮对话，不包含任务格式指令
-				const askMessages: ChatMessage[] = [];
-				for (const m of state.messages) {
-					if (m.role === "system") {
-						// 去掉 JSON 汇报格式指令，保留环境信息
-						const cleaned = m.content
-							.replace(/\n?全部完成后.*?JSON 作为工作汇报。?/g, "")
-							.replace(/\n?汇报格式.*?JSON schema。?/g, "")
-							.trim();
-						if (cleaned) askMessages.push({ role: "system", content: cleaned });
-					}
-				}
-				// 附上最近几轮任务对话（不含当前）
-				const recent = state.messages.slice(-6);
-				for (const m of recent) {
-					if (m.role !== "system") askMessages.push(m);
-				}
-				askMessages.push({ role: "user", content: msg.content });
+				// 多轮对话：直接追加到 state.messages，LLM 会记住之前的对话
+				state.messages.push({ role: "user", content: msg.content });
+				let reply = "";
 				try {
-					const response = await callLLM(askMessages, []);
-					const reply = response.content ?? "";
+					const response = await callLLM(state.messages, []);
+					reply = response.content ?? "";
 					process.stdout.write(
-						`${JSON.stringify({ kind: "ask_reply", askId: msg.askId, content: reply })}\n`,
+						`${JSON.stringify({ kind: "ask_reply", askId: msg.askId, content: reply })}
+`,
 					);
 				} catch (e) {
+					reply = `错误: ${e}`;
 					process.stdout.write(
-						`${JSON.stringify({ kind: "ask_reply", askId: msg.askId, content: `错误: ${e}` })}\n`,
+						`${JSON.stringify({ kind: "ask_reply", askId: msg.askId, content: reply })}
+`,
 					);
 				}
+				// 写入 state.messages，后续 ask/talk 会记住这段对话
+				state.messages.push({ role: "assistant", content: reply });
 				// 交互摘要 → Registry → 主 Agent 决策时可见
 				process.stdout.write(
 					`${JSON.stringify({ kind: "interaction_summary", from: msg.from, question: msg.content.slice(0, 80), at: Date.now() })}
