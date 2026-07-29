@@ -37,6 +37,7 @@ export class ToolExecutor {
 			if (!hasPlan && !args.exploratory) {
 				process.stderr.write("[dispatch] plan.md 不存在，自动切换为探索模式\n");
 			}
+			const mode = (args.mode as string) === "actor" ? "actor" : "oneshot";
 			const config: DispatchConfig = {
 				prompt: {
 					task,
@@ -63,6 +64,7 @@ export class ToolExecutor {
 					this.registry,
 					this.threadId,
 					this.sink,
+					mode,
 				);
 				return `[dispatch 已发出] agentId: ${agentId}`;
 			}

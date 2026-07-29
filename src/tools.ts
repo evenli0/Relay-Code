@@ -214,6 +214,11 @@ const dispatchTool: ToolDefinition = {
 					type: "boolean",
 					description: "设为 true 可在没有 plan.md 的情况下执行探索性任务",
 				},
+				mode: {
+					type: "string",
+					enum: ["oneshot", "actor"],
+					description: "oneshot=一次性进程(默认) actor=常驻进程，可后续对话",
+				},
 			},
 		},
 	},

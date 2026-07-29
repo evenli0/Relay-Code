@@ -139,7 +139,7 @@ ${e.text}
 	});
 
 	// 监听输入行
-	readline.on("line", (line: string) => {
+	readline.on("line", async (line: string) => {
 		const input = line.trim();
 		if (!input) {
 			process.stdout.write("> ");
@@ -188,6 +188,58 @@ ${e.text}
 				);
 				console.log(ctx);
 			}
+			process.stdout.write("> ");
+			return;
+		}
+
+		if (input.startsWith("actor ")) {
+			const task = input.slice(5).trim();
+			if (!task) {
+				console.log("用法: actor <任务描述>  — 启动一个常驻 Actor 子 Agent");
+				process.stdout.write("> ");
+				return;
+			}
+			const { dispatchAsync } = await import("./dispatcher");
+			const { agentId } = await dispatchAsync(
+				{
+					prompt: { task, role: "Actor" },
+					responseSchema: {
+						type: "object",
+						properties: { result: { type: "string" } },
+					},
+					max_rounds: 30,
+				},
+				inbox,
+				registry,
+				"main",
+				multiSink,
+				"actor",
+			);
+			console.log(
+				`[Actor 已启动] ${agentId.slice(-8)} — 可用 ask <id> <问题> 直接对话`,
+			);
+			process.stdout.write("> ");
+			return;
+		}
+
+		if (input.startsWith("ask ")) {
+			const rest = input.slice(4).trim();
+			const spaceIdx = rest.indexOf(" ");
+			if (spaceIdx === -1) {
+				console.log("用法: ask <agentId> <问题>");
+				process.stdout.write("> ");
+				return;
+			}
+			const targetId = rest.slice(0, spaceIdx);
+			const question = rest.slice(spaceIdx + 1);
+			const handle = registry.getHandle(targetId);
+			if (!handle) {
+				console.log(`Actor ${targetId} 不存在或不是 Actor 模式`);
+				process.stdout.write("> ");
+				return;
+			}
+			const reply = await handle.ask(question, "human");
+			console.log(`[Actor ${targetId.slice(-8)}]: ${reply}`);
 			process.stdout.write("> ");
 			return;
 		}
