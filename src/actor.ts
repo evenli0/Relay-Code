@@ -75,7 +75,17 @@ const state: {
 	tools: string[];
 	context: Record<string, unknown>;
 } = {
-	messages: await assembleMessages(initialConfig),
+	messages: (await assembleMessages(initialConfig)).map((m) => {
+		if (m.role !== "system") return m;
+		// 去掉 JSON 汇报格式指令——Actor 对话不需要
+		return {
+			...m,
+			content: m.content
+				.replace(/\n?全部完成后.*?JSON 作为工作汇报。?/g, "")
+				.replace(/\n?汇报格式.*?JSON schema。?/g, "")
+				.trim(),
+		};
+	}),
 	tools: initialConfig.allowed_tools ?? ["read", "write", "grep", "bash"],
 	context: {},
 };
