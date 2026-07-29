@@ -138,7 +138,23 @@ for await (const chunk of process.stdin) {
 
 			case "ask": {
 				// 轻量问答：单轮 LLM，不走完整 ReAct
-				const askMessages = [...state.messages];
+				// 用干净上下文：只保留 system prompt + 最近几轮对话，不包含任务格式指令
+				const askMessages: ChatMessage[] = [];
+				for (const m of state.messages) {
+					if (m.role === "system") {
+						// 去掉 JSON 汇报格式指令，保留环境信息
+						const cleaned = m.content
+							.replace(/\n?全部完成后.*?JSON 作为工作汇报。?/g, "")
+							.replace(/\n?汇报格式.*?JSON schema。?/g, "")
+							.trim();
+						if (cleaned) askMessages.push({ role: "system", content: cleaned });
+					}
+				}
+				// 附上最近几轮任务对话（不含当前）
+				const recent = state.messages.slice(-6);
+				for (const m of recent) {
+					if (m.role !== "system") askMessages.push(m);
+				}
 				askMessages.push({ role: "user", content: msg.content });
 				try {
 					const response = await callLLM(askMessages, []);
