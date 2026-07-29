@@ -118,10 +118,30 @@
     border-radius: 8px;
     padding: 12px 14px;
     margin-bottom: 16px;
-    max-height: 120px;
+    max-height: 300px;
     overflow-y: auto;
   }
   .event { font-size: 12px; color: var(--dim); padding: 2px 0; }
+  .conversation {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px;
+    margin-bottom: 16px;
+    max-height: 400px;
+    overflow-y: auto;
+  }
+  .msg {
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 14px;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .msg:last-child { border-bottom: none; }
+  .msg.user { color: var(--accent); }
+  .msg.agent { color: var(--text); }
   .cmd-bar {
     display: flex;
     gap: 8px;
@@ -169,7 +189,10 @@
 <div class="section-title">📋 Agent 看板</div>
 <div class="grid" id="grid"><div class="empty">等待第一个子 Agent...</div></div>
 
-<div class="section-title">📢 最近事件</div>
+<div class="section-title">💬 对话</div>
+<div class="conversation" id="conversation"><div class="msg">等待指令...</div></div>
+
+<div class="section-title" onclick="toggleEvents()" style="cursor:pointer">📢 事件 ▾</div>
 <div class="events" id="events"><div class="event">等待指令...</div></div>
 
 <div class="cmd-bar">
@@ -192,7 +215,7 @@ function renderCard(a) {
       <div class="card-id">ID: ${a.id}</div>
       ${a.status === "running" ? `<div class="progress-bar"><div class="progress-fill" style="width:${pct}%"></div></div>` : ""}
       ${a.progress ? `<div class="card-round">第 ${a.progress.round}/${a.progress.totalRounds || 30} 轮 — ${a.progress.lastAction}</div>` : ""}
-      ${a.summary ? `<div class="card-action">${a.summary.slice(0, 80)}</div>` : ""}
+      ${a.summary ? `<div class="card-action">${a.summary.slice(0, 300)}</div>` : ""}
     </div>`;
 }
 
@@ -209,11 +232,17 @@ function render(state) {
   }
 }
 
+function addMessage(text, cls) {
+  const el = document.getElementById("conversation");
+  el.innerHTML += `<div class="msg ${cls}">${text}</div>`;
+  el.scrollTop = el.scrollHeight;
+  while (el.children.length > 30) el.firstChild.remove();
+}
+
 function addEvent(msg) {
   const el = document.getElementById("events");
   el.innerHTML += `<div class="event">${msg}</div>`;
   el.scrollTop = el.scrollHeight;
-  // keep last 20
   while (el.children.length > 20) el.firstChild.remove();
 }
 
@@ -228,12 +257,26 @@ function connect() {
     if (data.type === "event") addEvent(data.msg);
     if (data.type === "sink") {
       const ev = data.event;
-      if (ev.kind === "agent_done" || ev.kind === "agent_error" || ev.kind === "agent_dispatched") {
-        addEvent(ev.kind === "agent_done" ? `✅ ${ev.agentId} [${ev.role}] 完成` :
-                 ev.kind === "agent_error" ? `❌ ${ev.agentId} [${ev.role}] 错误` :
-                 `🚀 ${ev.agentId} [${ev.role}] 已派出`);
+      if (ev.kind === "agent_dispatched") {
+        addMessage(`🚀 派出 [${ev.role}]: ${(ev.task || "").slice(0, 100)}`, "agent");
+        addEvent(`🚀 ${ev.agentId} [${ev.role}] 已派出`);
       }
-      if (ev.kind === "llm_response") addEvent(`💬 ${ev.text.slice(0, 120)}`);
+      if (ev.kind === "agent_done") {
+        addMessage(`✅ [${ev.role}] 完成: ${(ev.output || "").slice(0, 300)}`, "agent");
+        addEvent(`✅ ${ev.agentId} [${ev.role}] 完成`);
+      }
+      if (ev.kind === "agent_error") {
+        addMessage(`❌ [${ev.role}] 错误: ${(ev.error || "").slice(0, 200)}`, "agent");
+        addEvent(`❌ ${ev.agentId} [${ev.role}] 错误`);
+      }
+      if (ev.kind === "llm_response") {
+        addMessage(ev.text, "agent");
+        addEvent(`💬 Agent 回复`);
+      }
+      if (ev.kind === "notice" && ev.text.startsWith("💡")) {
+        addMessage(ev.text.replace("💡 Web: ", ""), "user");
+        addEvent(`📨 ${ev.text.replace("💡 Web: ", "").slice(0, 60)}`);
+      }
     }
   };
 
@@ -247,10 +290,23 @@ function sendCmd() {
   input.value = "";
   if (ws && ws.readyState === WebSocket.OPEN) {
     ws.send("cmd:" + cmd);
+  } else {
+    // POST fallback when WebSocket not connected
+    fetch("/api/cmd", { method: "POST", body: cmd });
   }
-  // also POST as fallback
-  fetch("/api/cmd", { method: "POST", body: cmd });
 }
+
+function toggleEvents() {
+  const el = document.getElementById("events");
+  const title = el.previousElementSibling;
+  el.style.display = el.style.display === "none" ? "" : "none";
+  title.textContent = el.style.display === "none" ? "📢 事件 ▸" : "📢 事件 ▾";
+}
+// events start collapsed
+document.addEventListener("DOMContentLoaded", () => {
+  document.getElementById("events").style.display = "none";
+  document.querySelector(".section-title[onclick]").textContent = "📢 事件 ▸";
+});
 
 document.getElementById("cmd").addEventListener("keydown", (e) => {
   if (e.key === "Enter") sendCmd();
@@ -260,6 +316,19 @@ document.getElementById("cmd").addEventListener("keydown", (e) => {
 fetch("/api/state").then(r => r.json()).then(render);
 fetch("/api/events").then(r => r.json()).then(events => {
   events.forEach(addEvent);
+});
+// 恢复对话（刷新不丢）
+fetch("/api/conversation").then(r => r.json()).then(msgs => {
+  const el = document.getElementById("conversation");
+  el.innerHTML = "";
+  if (!msgs || msgs.length === 0) {
+    el.innerHTML = '<div class="msg">等待指令...</div>';
+  } else {
+    for (const m of msgs) {
+      el.innerHTML += '<div class="msg ' + m.cls + '">' + m.text + '</div>';
+    }
+    el.scrollTop = el.scrollHeight;
+  }
 });
 connect();
 </script>

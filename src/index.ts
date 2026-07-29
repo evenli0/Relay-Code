@@ -5,6 +5,7 @@ import { milestone } from "./display";
 import { Inbox } from "./inbox";
 import { saveDialogue } from "./memory";
 import { Orchestrator } from "./orchestrator";
+import type { SinkEvent } from "./sink";
 
 // === .env 自动加载 ===
 try {
@@ -96,7 +97,7 @@ async function daemonMode(): Promise<void> {
 
 	// Terminal Sink: CLI 输出
 	multiSink.add({
-		emit(e: any) {
+		emit(e: SinkEvent) {
 			switch (e.kind) {
 				case "llm_response":
 					console.log(`
@@ -105,16 +106,16 @@ ${e.text}
 					process.stdout.write("> ");
 					break;
 				case "agent_done":
-					console.log("✅ [" + e.role + "] 完成: " + (e.output || "").slice(0, 100));
+					console.log(`✅ [${e.role}] 完成: ${(e.output || "").slice(0, 100)}`);
 					break;
 				case "agent_error":
-					console.log("❌ [" + e.role + "] 错误: " + (e.error || "").slice(0, 100));
+					console.log(`❌ [${e.role}] 错误: ${(e.error || "").slice(0, 100)}`);
 					break;
 				case "agent_dispatched":
-					console.log("🚀 [" + e.role + "] 已派出: " + (e.task || "").slice(0, 80));
+					console.log(`🚀 [${e.role}] 已派出: ${(e.task || "").slice(0, 80)}`);
 					break;
 				case "notice":
-					console.log("[" + e.level + "] " + e.text);
+					console.log(`[${e.level}] ${e.text}`);
 					break;
 			}
 		},
@@ -124,7 +125,7 @@ ${e.text}
 
 	// 启动 Web Dashboard
 	const { startServer } = await import("./server");
-	startServer(3000, registry, inbox);
+	startServer(3000, registry, inbox, multiSink);
 
 	console.log(
 		`Relay Code v${VERSION} — daemon mode — Dashboard: http://localhost:3000.\n`,

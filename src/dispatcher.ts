@@ -1,5 +1,4 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import type { Sink } from "./sink";
 import type { AgentRegistry } from "./agent-registry";
 import { elapsed, subAgentEnd, subAgentStart, toolResultLine } from "./display";
 import { unwrapError } from "./errors";
@@ -7,6 +6,7 @@ import type { Inbox } from "./inbox";
 import { callLLM } from "./llm";
 import { saveDialogue } from "./memory";
 import { assembleMessages } from "./message-assembler";
+import type { Sink } from "./sink";
 import type { ToolExecutor } from "./tool-executor";
 import { ALL_TOOLS } from "./tools";
 import type {
@@ -118,7 +118,13 @@ export async function dispatchAsync(
 					);
 					if (exitCode === 0 && result.status === "completed") {
 						registry.markDone(agentId, result.output?.slice(0, 200) ?? "完成");
-						if (sink) sink.emit({ kind: "agent_done", agentId, role, output: result.output ?? "" });
+						if (sink)
+							sink.emit({
+								kind: "agent_done",
+								agentId,
+								role,
+								output: result.output ?? "",
+							});
 						inbox.push({
 							type: "agent_done",
 							threadId,
@@ -130,7 +136,8 @@ export async function dispatchAsync(
 					} else {
 						const err = result.output ?? `exit ${exitCode}`;
 						registry.markError(agentId, err);
-						if (sink) sink.emit({ kind: "agent_error", agentId, role, error: err });
+						if (sink)
+							sink.emit({ kind: "agent_error", agentId, role, error: err });
 						inbox.push({
 							type: "agent_error",
 							threadId,

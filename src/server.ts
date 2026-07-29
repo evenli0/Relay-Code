@@ -15,6 +15,21 @@ import type { Sink, SinkEvent } from "./sink";
 const _events: string[] = [];
 const _wsClientsAny = new Set<{ send(data: string): void }>();
 
+// 对话消息缓存（服务端内存，刷新不丢）
+interface ConvMsg {
+	text: string;
+	cls: "user" | "agent";
+	ts: string;
+}
+const _conversation: ConvMsg[] = [];
+const MAX_CONV_MSGS = 200;
+
+function pushConversation(text: string, cls: "user" | "agent"): void {
+	const time = new Date().toLocaleTimeString("zh-CN", { hour12: false });
+	_conversation.push({ text, cls, ts: `[${time}]` });
+	if (_conversation.length > MAX_CONV_MSGS) _conversation.shift();
+}
+
 export function createWsSink(): Sink {
 	return {
 		emit(e: SinkEvent) {
@@ -22,10 +37,37 @@ export function createWsSink(): Sink {
 			const label = eventLabel(e);
 			_events.push(`[${time}] ${label}`);
 			if (_events.length > 100) _events.shift();
+
+			// 同步写入对话缓存（刷新不丢）
+			if (e.kind === "llm_response") {
+				pushConversation(e.text, "agent");
+			} else if (e.kind === "notice" && e.text.startsWith("💡")) {
+				pushConversation(e.text.replace("💡 Web: ", ""), "user");
+			} else if (e.kind === "agent_done") {
+				pushConversation(
+					`✅ [${e.role}] 完成: ${(e.output || "").slice(0, 300)}`,
+					"agent",
+				);
+			} else if (e.kind === "agent_error") {
+				pushConversation(
+					`❌ [${e.role}] 错误: ${(e.error || "").slice(0, 200)}`,
+					"agent",
+				);
+			} else if (e.kind === "agent_dispatched") {
+				pushConversation(
+					`🚀 派出 [${e.role}]: ${(e.task || "").slice(0, 100)}`,
+					"agent",
+				);
+			}
+
 			// 广播 Sink 事件到 WebSocket 客户端
 			const payload = JSON.stringify({ type: "sink", event: e });
 			for (const ws of _wsClientsAny) {
-				try { ws.send(payload); } catch { /* ignore */ }
+				try {
+					ws.send(payload);
+				} catch {
+					/* ignore */
+				}
 			}
 		},
 	};
@@ -33,12 +75,18 @@ export function createWsSink(): Sink {
 
 function eventLabel(e: SinkEvent): string {
 	switch (e.kind) {
-		case "agent_dispatched": return `🚀 ${e.agentId} [${e.role}] 已派出`;
-		case "agent_done": return `✅ ${e.agentId} [${e.role}] 完成`;
-		case "agent_error": return `❌ ${e.agentId} [${e.role}] 错误`;
-		case "llm_response": return `💬 ${e.text.slice(0, 80)}`;
-		case "notice": return `[${e.level}] ${e.text}`;
-		default: return e.kind;
+		case "agent_dispatched":
+			return `🚀 ${e.agentId} [${e.role}] 已派出`;
+		case "agent_done":
+			return `✅ ${e.agentId} [${e.role}] 完成`;
+		case "agent_error":
+			return `❌ ${e.agentId} [${e.role}] 错误`;
+		case "llm_response":
+			return `💬 ${e.text.slice(0, 80)}`;
+		case "notice":
+			return `[${e.level}] ${e.text}`;
+		default:
+			return e.kind;
 	}
 }
 
@@ -86,6 +134,7 @@ export function startServer(
 	port: number,
 	registry: AgentRegistry,
 	inbox: Inbox,
+	sink: import("./sink").Sink,
 ): void {
 	let prevSnapshot = "";
 	setInterval(() => {
@@ -129,7 +178,7 @@ export function startServer(
 
 	Bun.serve({
 		port,
-		fetch(req, server) {
+		async fetch(req, server) {
 			const url = new URL(req.url);
 
 			if (url.pathname === "/ws") {
@@ -162,8 +211,15 @@ export function startServer(
 				});
 			}
 
+			if (url.pathname === "/api/conversation") {
+				return new Response(JSON.stringify(_conversation), {
+					headers: { "Content-Type": "application/json" },
+				});
+			}
+
 			if (url.pathname === "/api/cmd" && req.method === "POST") {
-				req.text().then((cmd) => {
+				try {
+					const cmd = await req.text();
 					if (cmd.trim()) {
 						inbox.push({
 							type: "user_message",
@@ -171,9 +227,19 @@ export function startServer(
 							timestamp: Date.now(),
 							content: cmd.trim(),
 						});
-						pushEvent(`📨 收到命令: ${cmd.trim().slice(0, 80)}`);
+						sink.emit({
+							kind: "notice",
+							level: "info",
+							text: `💡 Web: ${cmd.trim().slice(0, 120)}`,
+						});
+						const time = new Date().toLocaleTimeString("zh-CN", {
+							hour12: false,
+						});
+						_events.push(`[${time}] 📨 ${cmd.trim().slice(0, 80)}`);
 					}
-				});
+				} catch {
+					/* request body read failed */
+				}
 				return new Response("ok");
 			}
 
@@ -220,6 +286,11 @@ export function startServer(
 							threadId: "main",
 							timestamp: Date.now(),
 							content: cmd,
+						});
+						sink.emit({
+							kind: "notice",
+							level: "info",
+							text: `💡 Web: ${cmd.slice(0, 120)}`,
 						});
 						pushEvent(`📨 收到命令: ${cmd.slice(0, 80)}`);
 					}

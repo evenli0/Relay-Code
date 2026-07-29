@@ -70,7 +70,13 @@ export class Harness {
 		if (!this._inbox || !this._registry || !this._threadId) {
 			throw new Error("dispatchFireAndForget 需要 inbox + registry + threadId");
 		}
-		return dispatchAsync(config, this._inbox, this._registry, this._threadId, this.executor.sink);
+		return dispatchAsync(
+			config,
+			this._inbox,
+			this._registry,
+			this._threadId,
+			this.executor.sink,
+		);
 	}
 
 	/** 拼装子Agent 消息（测试用） */
