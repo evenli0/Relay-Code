@@ -107,16 +107,8 @@ export async function dispatchAsync(
 		const handle = new ActorHandle(agentId, config);
 		registry.registerActor(agentId, role, threadId, handle);
 
-		// 自动发送初始任务（Actor 不会自己开始）
-		const taskContent = config.prompt.task || config.prompt.instructions || "";
-		if (taskContent) {
-			const initialTaskId = `task-init-${agentId}`;
-			handle.send({
-				kind: "task",
-				taskId: initialTaskId,
-				content: taskContent,
-			});
-		}
+		// Actor 已从 config 加载 system prompt + user message
+		// 不自动跑 ReAct — 进入 talk 后直接对话
 
 		handle.onOutput = (msg) => {
 			if (msg.kind === "progress") {
