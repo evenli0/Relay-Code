@@ -130,7 +130,15 @@ ${e.text}
 	console.log(
 		`Relay Code v${VERSION} — daemon mode — Dashboard: http://localhost:3000.\n`,
 	);
-	console.log("Commands: <task> | status | peek <id> | exit\n> ");
+	console.log("Commands:");
+	console.log("  <任意文本>             发送任务给主 Agent");
+	console.log("  actor <任务>            启动常驻 Actor 子 Agent");
+	console.log("  ask <id> <问题>         直接问某个 Actor");
+	console.log("  talk <id>               进入 Actor 专用对话模式");
+	console.log("  status                  查看所有 Agent 状态");
+	console.log("  peek [id]               查看 Agent 详情");
+	console.log("  exit                    退出");
+	console.log("");
 
 	// stdin 监听：把每行输入推入收件箱
 	const readline = (await import("node:readline")).createInterface({
@@ -218,6 +226,48 @@ ${e.text}
 			console.log(
 				`[Actor 已启动] ${agentId.slice(-8)} — 可用 ask <id> <问题> 直接对话`,
 			);
+			process.stdout.write("> ");
+			return;
+		}
+
+		if (input.startsWith("talk ")) {
+			const targetId = input.slice(5).trim();
+			if (!targetId) {
+				console.log("用法: talk <agentId>");
+				process.stdout.write("> ");
+				return;
+			}
+			const handle = registry.getHandle(targetId);
+			if (!handle) {
+				console.log(`Actor ${targetId} 不存在或不是 Actor 模式`);
+				process.stdout.write("> ");
+				return;
+			}
+			// 暂停 stdin 监听，进入对话模式
+			readline.pause();
+			console.log(
+				`\n进入 Actor ${targetId.slice(-8)} 对话模式 — 输入 /exit 退出\n`,
+			);
+			const talkRl = (await import("node:readline")).createInterface({
+				input: process.stdin,
+				output: process.stdout,
+				prompt: `[${targetId.slice(-8)}] > `,
+			});
+			talkRl.prompt();
+			for await (const talkLine of talkRl) {
+				const msg = talkLine.trim();
+				if (!msg) {
+					talkRl.prompt();
+					continue;
+				}
+				if (msg === "/exit") break;
+				const reply = await handle.ask(msg, "human");
+				console.log(`[${targetId.slice(-8)}] ${reply}`);
+				talkRl.prompt();
+			}
+			talkRl.close();
+			console.log("已退出对话模式\n");
+			readline.resume();
 			process.stdout.write("> ");
 			return;
 		}
