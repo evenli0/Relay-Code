@@ -49,7 +49,8 @@ export type ActorOutput =
 	  }
 	| { kind: "task_error"; taskId: string; error: string }
 	| { kind: "ask_reply"; askId: string; content: string }
-	| { kind: "configured" };
+	| { kind: "configured" }
+	| { kind: "interaction_summary"; from: string; question: string; at: number };
 
 // ─── 入口 ───────────────────────────────────────────
 
@@ -167,6 +168,11 @@ for await (const chunk of process.stdin) {
 						`${JSON.stringify({ kind: "ask_reply", askId: msg.askId, content: `错误: ${e}` })}\n`,
 					);
 				}
+				// 交互摘要 → Registry → 主 Agent 决策时可见
+				process.stdout.write(
+					`${JSON.stringify({ kind: "interaction_summary", from: msg.from, question: msg.content.slice(0, 80), at: Date.now() })}
+`,
+				);
 				break;
 			}
 

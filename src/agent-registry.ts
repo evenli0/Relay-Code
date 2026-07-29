@@ -63,6 +63,8 @@ interface AgentState {
 	summary?: string;
 	/** 内存中的进度（Actor 模式不写文件，从这里读） */
 	progress?: AgentProgress;
+	/** 最近一次与人类的交互摘要 */
+	lastInteraction?: { from: string; question: string; at: number };
 	/** Level 3：最近的轮次历史（内存缓存） */
 	recentHistory: AgentHistoryEntry[];
 }
@@ -127,6 +129,16 @@ export class AgentRegistry {
 			result: summary.slice(0, 100),
 		});
 		if (a.recentHistory.length > 20) a.recentHistory.shift();
+	}
+
+	/** 记录子 Agent 与人类的最新交互（供主 Agent 快照） */
+	recordInteraction(
+		id: string,
+		info: { from: string; question: string; at: number },
+	): void {
+		const a = this.agents.get(id);
+		if (!a) return;
+		a.lastInteraction = info;
 	}
 
 	/** 获取 Actor 的遥控器（供人类/web 直接对话） */
@@ -207,6 +219,14 @@ export class AgentRegistry {
 			}
 
 			lines.push(`  ${icon} ${a.role} (${shortId}): ${detail}`);
+			// 显示最近一次人类交互
+			if (a.lastInteraction) {
+				const ago = Math.round((Date.now() - a.lastInteraction.at) / 1000);
+				const agoStr = ago < 60 ? `${ago}s` : `${Math.round(ago / 60)}min`;
+				lines.push(
+					`     💬 ${a.lastInteraction.from}: ${a.lastInteraction.question} [${agoStr} 前]`,
+				);
+			}
 		}
 		return lines.join("\n");
 	}

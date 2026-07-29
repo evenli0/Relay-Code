@@ -155,6 +155,13 @@ export async function dispatchAsync(
 					agentId,
 				});
 			}
+			if (msg.kind === "interaction_summary") {
+				registry.recordInteraction(agentId, {
+					from: msg.from,
+					question: msg.question,
+					at: msg.at,
+				});
+			}
 		};
 
 		if (sink)
