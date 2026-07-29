@@ -78,12 +78,19 @@ export class ActorHandle {
 						continue;
 					}
 
-					// 匹配 pending promise（task_done / task_error）
+					// 匹配 pending promise（task_done / task_error / ask_reply）
 					if (msg.kind === "task_done" || msg.kind === "task_error") {
 						const resolve = this.pending.get(msg.taskId);
 						if (resolve) {
 							resolve(msg);
 							this.pending.delete(msg.taskId);
+						}
+					}
+					if (msg.kind === "ask_reply") {
+						const resolve = this.pending.get(msg.askId);
+						if (resolve) {
+							resolve(msg);
+							this.pending.delete(msg.askId);
 						}
 					}
 
