@@ -133,7 +133,6 @@ ${e.text}
 	console.log("Commands:");
 	console.log("  <任意文本>             发送任务给主 Agent");
 	console.log("  actor <任务>            启动常驻 Actor 子 Agent");
-	console.log("  ask <id> <问题>         直接问某个 Actor");
 	console.log("  talk <id>               进入 Actor 专用对话模式");
 	console.log("  status                  查看所有 Agent 状态");
 	console.log("  peek [id]               查看 Agent 详情");
@@ -224,7 +223,7 @@ ${e.text}
 				"actor",
 			);
 			console.log(
-				`[Actor 已启动] ${agentId.slice(-8)} — 可用 ask <id> <问题> 直接对话`,
+				`[Actor 已启动] ${agentId.slice(-8)} — 可用 talk <id> 进入对话`,
 			);
 			process.stdout.write("> ");
 			return;
@@ -268,28 +267,6 @@ ${e.text}
 			talkRl.close();
 			console.log("已退出对话模式\n");
 			readline.resume();
-			process.stdout.write("> ");
-			return;
-		}
-
-		if (input.startsWith("ask ")) {
-			const rest = input.slice(4).trim();
-			const spaceIdx = rest.indexOf(" ");
-			if (spaceIdx === -1) {
-				console.log("用法: ask <agentId> <问题>");
-				process.stdout.write("> ");
-				return;
-			}
-			const targetId = rest.slice(0, spaceIdx);
-			const question = rest.slice(spaceIdx + 1);
-			const handle = registry.getHandle(targetId);
-			if (!handle) {
-				console.log(`Actor ${targetId} 不存在或不是 Actor 模式`);
-				process.stdout.write("> ");
-				return;
-			}
-			const reply = await handle.ask(question, "human");
-			console.log(`[Actor ${targetId.slice(-8)}]: ${reply}`);
 			process.stdout.write("> ");
 			return;
 		}
