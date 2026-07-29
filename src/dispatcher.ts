@@ -107,6 +107,17 @@ export async function dispatchAsync(
 		const handle = new ActorHandle(agentId, config);
 		registry.registerActor(agentId, role, threadId, handle);
 
+		// 自动发送初始任务（Actor 不会自己开始）
+		const taskContent = config.prompt.task || config.prompt.instructions || "";
+		if (taskContent) {
+			const initialTaskId = `task-init-${agentId}`;
+			handle.send({
+				kind: "task",
+				taskId: initialTaskId,
+				content: taskContent,
+			});
+		}
+
 		handle.onOutput = (msg) => {
 			if (msg.kind === "progress") {
 				registry.updateProgress(agentId, msg.round, msg.action, msg.summary);

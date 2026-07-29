@@ -61,6 +61,8 @@ interface AgentState {
 	status: "running" | "done" | "error";
 	startedAt: number;
 	summary?: string;
+	/** 内存中的进度（Actor 模式不写文件，从这里读） */
+	progress?: AgentProgress;
 	/** Level 3：最近的轮次历史（内存缓存） */
 	recentHistory: AgentHistoryEntry[];
 }
@@ -111,6 +113,13 @@ export class AgentRegistry {
 	): void {
 		const a = this.agents.get(id);
 		if (!a) return;
+		a.progress = {
+			round,
+			lastAction: action,
+			lastSummary: summary.slice(0, 100),
+			elapsedMs: Date.now() - a.startedAt,
+			updatedAt: Date.now(),
+		};
 		a.recentHistory.push({
 			round,
 			timestamp: Date.now(),
@@ -183,8 +192,8 @@ export class AgentRegistry {
 				a.status === "running" ? "⟳" : a.status === "done" ? "✓" : "✗";
 			const shortId = a.id.slice(-8);
 
-			// 尝试读进度文件获取最新状态
-			const progress = this._readProgress(a.id);
+			// 优先用内存进度（Actor 模式），fallback 到文件
+			const progress = a.progress ?? this._readProgress(a.id);
 
 			let detail = "";
 			if (a.status === "running") {
@@ -215,7 +224,7 @@ export class AgentRegistry {
 			threadId: a.threadId,
 			status: a.status,
 			startedAt: a.startedAt,
-			progress: this._readProgress(agentId),
+			progress: a.progress ?? this._readProgress(agentId),
 			summary: a.summary,
 		};
 	}
