@@ -82,6 +82,33 @@ describe("Supervisor", () => {
 		s.stopAll();
 	});
 
+	test("事件路由（pipe 原语）：按 consumes 投递，自排除防环", async () => {
+		const received: unknown[] = [];
+		const s = makeSupervisor();
+		s.onNodeEvent = (_id, msg) => {
+			if (msg.kind === "event" && msg.type === "routed.received") {
+				received.push(msg.payload);
+			}
+		};
+
+		// producer 也声明 consumes data.ready → 自排除验证（不投回自己）
+		const producer = base("prod");
+		producer.emits = ["data.ready"];
+		producer.consumes = ["data.ready"];
+		const consumer = base("cons");
+		consumer.emits = [];
+		consumer.consumes = ["data.ready"];
+
+		s.start(producer, { fixtureMode: "producer" } as never);
+		s.start(consumer, { fixtureMode: "consumer" } as never);
+		await sleep(1800);
+
+		expect(received.length).toBeGreaterThanOrEqual(1);
+		// 自排除：producer 不因自己的事件被投递而循环（received 数量稳定，无爆炸）
+		expect(received.length).toBeLessThanOrEqual(20);
+		s.stopAll();
+	});
+
 	test("getClusterStatus 健康汇总（守护强化）", async () => {
 		const s = makeSupervisor();
 		s.start(base("health"), { fixtureMode: "live" } as never);

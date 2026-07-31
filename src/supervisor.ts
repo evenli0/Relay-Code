@@ -57,6 +57,11 @@ export class Supervisor {
 	private logger: (msg: string) => void;
 	private watchdog: ReturnType<typeof setInterval> | null = null;
 	private scheduler?: Scheduler;
+	/** 事件路由（pipe 原语，Phase5-A）：eventType → 消费它的服务列表（契约 consumes 声明） */
+	private consumesIndex = new Map<string, string[]>();
+	/** 路由 hop 计数（防环：同一事件最多路由 3 跳） */
+	private routeHops = new Map<string, number>();
+	private readonly maxRouteHops = 3;
 
 	/** 节点事件转发（→ StateStore / EventBus） */
 	public onNodeEvent?: (id: string, msg: ServiceEvent) => void;
@@ -104,7 +109,49 @@ export class Supervisor {
 				node.handle?.send({ kind: "schedule", spec: schedule });
 			});
 		}
+
+		// 事件路由登记：consumes 声明 → 路由表（pipe 原语）
+		for (const eventType of contract.consumes) {
+			const list = this.consumesIndex.get(eventType) ?? [];
+			if (!list.includes(id)) list.push(id);
+			this.consumesIndex.set(eventType, list);
+		}
 		return id;
+	}
+
+	/**
+	 * 事件路由（pipe 原语，framework-design §4/§6）：把服务事件按 consumes
+	 * 声明投递给消费方。防环：不投回自己 + correlationId hop 上限。
+	 */
+	private routeEvent(fromId: string, msg: ServiceEvent): void {
+		if (msg.kind !== "event") return;
+		const targets = this.consumesIndex.get(msg.type);
+		if (!targets || targets.length === 0) return;
+
+		// hop 计数防环：同一关联事件最多路由 3 跳
+		const cid = msg.correlationId ?? `evt-${msg.ts}-${fromId}`;
+		const hops = (this.routeHops.get(cid) ?? 0) + 1;
+		if (hops > this.maxRouteHops) {
+			this.logger(
+				`[route] ${msg.type} 超过 ${this.maxRouteHops} 跳，丢弃（防环）`,
+			);
+			this.routeHops.delete(cid);
+			return;
+		}
+		this.routeHops.set(cid, hops);
+
+		for (const targetId of targets) {
+			if (targetId === fromId) continue; // 不投回自己
+			const node = this.nodes.get(targetId);
+			if (!node || node.status !== "running") continue;
+			node.handle?.send({
+				kind: "event",
+				type: msg.type,
+				payload: msg.payload,
+				correlationId: cid,
+			});
+			this.logger(`[route] ${msg.type}: ${fromId} → ${targetId}`);
+		}
 	}
 
 	private spawn(
@@ -125,6 +172,8 @@ export class Supervisor {
 					node.status = "running";
 				}
 			}
+			// 事件路由（pipe 原语）：按 consumes 声明投递（防环）
+			this.routeEvent(node.id, msg);
 			this.onNodeEvent?.(node.id, msg);
 		};
 		handle.onExit = (exitCode) => this.onExit(node, exitCode);
@@ -168,6 +217,12 @@ export class Supervisor {
 		node.stopped = true;
 		if (node.restartTimer) clearTimeout(node.restartTimer);
 		this.scheduler?.unregister(id);
+		// 事件路由注销
+		for (const [eventType, list] of this.consumesIndex) {
+			const idx = list.indexOf(id);
+			if (idx >= 0) list.splice(idx, 1);
+			if (list.length === 0) this.consumesIndex.delete(eventType);
+		}
 		node.handle?.shutdown();
 		node.status = "stopped";
 		this.logger(`${id} 停止（${reason}）`);
