@@ -1,5 +1,17 @@
-import { describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, test } from "bun:test";
+import { rmSync } from "node:fs";
+import { grantApproval } from "../src/approvals";
 import { ToolExecutor } from "../src/tool-executor";
+
+const APPROVALS_FILE = ".relay/approvals.jsonl";
+
+afterAll(() => {
+	try {
+		rmSync(APPROVALS_FILE, { force: true });
+	} catch {
+		/* ignore */
+	}
+});
 
 describe("ToolExecutor 权限 enforcement", () => {
 	test("无权限声明 = 不限制（旧路径兼容）", async () => {
@@ -59,10 +71,24 @@ describe("ToolExecutor 权限 enforcement", () => {
 		).toContain("权限拒绝");
 	});
 
-	test("批准点：声明为需确认的操作一律拒绝（Phase 4 前）", async () => {
+	test("批准点：未批准拒绝，批准后放行（按服务隔离）", async () => {
 		const ex = new ToolExecutor();
+		ex.serviceId = "svc-a";
 		ex.setPermissions({ tools: ["bash", "read"], approval: ["bash"] });
-		const r = await ex.executeToolCall("bash", { command: "echo hi" });
-		expect(r).toContain("批准点");
+
+		// 未批准 → 拒绝并提示
+		const denied = await ex.executeToolCall("bash", { command: "echo hi" });
+		expect(denied).toContain("批准");
+
+		// 批准 svc-a 的 bash → 放行（记忆化）
+		grantApproval("svc-a", "bash");
+		const allowed = await ex.executeToolCall("bash", { command: "echo hi" });
+		expect(allowed).toContain("hi");
+
+		// 其他服务未批准 → 仍拒绝（按服务隔离）
+		ex.serviceId = "svc-b";
+		expect(await ex.executeToolCall("bash", { command: "echo hi" })).toContain(
+			"批准",
+		);
 	});
 });

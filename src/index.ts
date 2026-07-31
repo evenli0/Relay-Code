@@ -175,6 +175,7 @@ ${e.text}
 	console.log(
 		"  reload                  热加载 services/ 目录（启动新增/停止移除）",
 	);
+	console.log("  approve <svc> <tool>    批准服务的高危操作（批准点，记忆化）");
 	console.log("  exit                    退出");
 	console.log("");
 
@@ -262,6 +263,24 @@ ${e.text}
 			orchestrator.addGateRule(rule);
 			console.log(
 				`规则已生效: ${eventType} → ${action}（已沉淀到 .relay/notify-rules.jsonl）`,
+			);
+			process.stdout.write("> ");
+			return;
+		}
+
+		if (input.startsWith("approve ")) {
+			// approve <serviceId> <tool> —— 批准点确认流（记忆化）
+			const parts = input.slice(8).trim().split(/\s+/);
+			const [serviceId, tool] = parts;
+			if (!serviceId || !tool) {
+				console.log("用法: approve <serviceId> <tool>");
+				process.stdout.write("> ");
+				return;
+			}
+			const { grantApproval } = await import("./approvals");
+			grantApproval(serviceId, tool);
+			console.log(
+				`已批准: ${serviceId} 的 ${tool}（记忆化到 .relay/approvals.jsonl，后续自动放行）`,
 			);
 			process.stdout.write("> ");
 			return;

@@ -43,6 +43,10 @@ const executor = new ToolExecutor();
 if (initialConfig.permissions) {
 	executor.setPermissions(initialConfig.permissions);
 }
+// 服务 id（批准点确认流按服务隔离，Phase4-B）
+if (initialConfig.serviceId) {
+	executor.serviceId = initialConfig.serviceId;
+}
 
 // 基础消息（系统提示 + 启动时注入的用户上下文）
 const baseMessages: ChatMessage[] = (await assembleMessages(initialConfig)).map(

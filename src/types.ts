@@ -70,6 +70,8 @@ export interface DispatchConfig {
 	isolation?: "worktree";
 	/** 服务契约权限（Supervisor 下发到节点进程，ToolExecutor 强制执行，framework-design §9） */
 	permissions?: ServicePermissions;
+	/** 服务 id（批准点确认流按服务隔离，Phase4-B） */
+	serviceId?: string;
 	/** 可选：计划上下文（已弃用，改用 plan.md 文件） */
 	plan?: {
 		goal: string;

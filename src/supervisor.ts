@@ -298,6 +298,7 @@ function buildDispatchConfigFromContract(
 		},
 		allowed_tools: contract.permissions.tools ?? contract.tools,
 		permissions: contract.permissions, // 下发到节点进程，ToolExecutor 强制执行
+		serviceId: contract.id, // 批准点确认流按服务隔离（Phase4-B）
 		responseSchema: {
 			type: "object",
 			properties: { result: { type: "string" } },

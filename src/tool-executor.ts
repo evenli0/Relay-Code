@@ -1,5 +1,6 @@
 import path from "node:path";
 import type { AgentRegistry } from "./agent-registry";
+import { loadApprovals } from "./approvals";
 import { dispatchAsync } from "./dispatcher";
 import type { Inbox } from "./inbox";
 import type { ServiceContract, ServicePermissions } from "./service-contract";
@@ -29,6 +30,8 @@ export class ToolExecutor {
 	stateStore?: StateStore;
 	/** 服务集群（create_service 工具的热部署目标，framework-design §10） */
 	supervisor?: Supervisor;
+	/** 服务 id（批准点确认流按服务隔离，Phase4-B） */
+	serviceId?: string;
 
 	/** 注入服务契约权限（Supervisor/actor 启动时） */
 	setPermissions(p: ServicePermissions | null): void {
@@ -170,9 +173,11 @@ export class ToolExecutor {
 			return `权限拒绝：工具 ${toolName} 不在白名单（允许: ${allowed.join(", ")}）`;
 		}
 
-		// 批准点：声明为需确认的操作（Phase 4 接用户确认 UI，当前一律拒绝）
+		// 批准点：声明为需确认的操作（Phase4-B 确认流：approve 后放行）
 		if (p.approval?.includes(toolName)) {
-			return `权限拒绝：操作 ${toolName} 需要用户确认（批准点，Phase 4 接入）`;
+			const key = `${this.serviceId ?? "unknown"}:${toolName}`;
+			if (loadApprovals().has(key)) return null; // 已批准过，放行
+			return `权限拒绝：操作 ${toolName} 需要用户批准（daemon 执行: approve ${this.serviceId ?? "?"} ${toolName}）`;
 		}
 
 		// fs 路径白名单
