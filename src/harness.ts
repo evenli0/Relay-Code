@@ -5,6 +5,7 @@ import { assembleMessages } from "./message-assembler";
 import { PlanManager } from "./plan-manager";
 import type { Sink } from "./sink";
 import type { StateStore } from "./state-store";
+import type { Supervisor } from "./supervisor";
 import { ToolExecutor } from "./tool-executor";
 import type { ChatMessage, DispatchConfig, SubAgentResult } from "./types";
 
@@ -43,6 +44,11 @@ export class Harness {
 	/** 接入全局状态模型（query_state 工具的数据源） */
 	setStateStore(store: StateStore): void {
 		this.executor.stateStore = store;
+	}
+
+	/** 接入服务集群（create_service 工具的热部署目标） */
+	setSupervisor(s: Supervisor): void {
+		this.executor.supervisor = s;
 	}
 
 	/** 更新 threadId（每次新对话时） */

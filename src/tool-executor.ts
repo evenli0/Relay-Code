@@ -2,8 +2,10 @@ import path from "node:path";
 import type { AgentRegistry } from "./agent-registry";
 import { dispatchAsync } from "./dispatcher";
 import type { Inbox } from "./inbox";
-import type { ServicePermissions } from "./service-contract";
+import type { ServiceContract, ServicePermissions } from "./service-contract";
+import { createServiceContract, writeServiceFiles } from "./service-factory";
 import type { StateStore } from "./state-store";
+import type { Supervisor } from "./supervisor";
 import { ALL_TOOLS, resolveShell } from "./tools";
 import type { DispatchConfig, SubAgentResult } from "./types";
 
@@ -25,6 +27,8 @@ export class ToolExecutor {
 	private contractPermissions: ServicePermissions | null = null;
 	/** 全局状态模型（query_state 工具的数据源，framework-design §5） */
 	stateStore?: StateStore;
+	/** 服务集群（create_service 工具的热部署目标，framework-design §10） */
+	supervisor?: Supervisor;
 
 	/** 注入服务契约权限（Supervisor/actor 启动时） */
 	setPermissions(p: ServicePermissions | null): void {
@@ -39,6 +43,29 @@ export class ToolExecutor {
 		// 权限 enforcement：契约声明之外的一律拒绝（framework-design §9）
 		const denied = this.enforce(toolName, args);
 		if (denied) return denied;
+
+		// create_service：主 agent 生成并部署服务（framework-design §10，创生）
+		if (toolName === "create_service") {
+			if (!this.supervisor) return "create_service 不可用：Supervisor 未接入";
+			const name = typeof args.name === "string" ? args.name.trim() : "";
+			if (!name) return "create_service 需要 name 参数（服务名）";
+			const archetypeArg =
+				typeof args.archetype === "string" ? args.archetype : "pusher";
+			const archetypes = ["pusher", "watcher", "interactive", "hybrid"];
+			if (!archetypes.includes(archetypeArg)) {
+				return `create_service archetype 必须是 ${archetypes.join("/")}`;
+			}
+			const contract = createServiceContract({
+				name,
+				description:
+					typeof args.description === "string" ? args.description : name,
+				archetype: archetypeArg as ServiceContract["archetype"],
+			});
+			const written = writeServiceFiles(contract);
+			if (!written.ok) return `create_service 失败: ${written.error}`;
+			this.supervisor.start(contract);
+			return `[create_service] 已生成并部署: ${contract.id}（services/${contract.id}/，编辑 entry.ts 后 reload 生效）`;
+		}
 
 		// query_state：主 agent 的"知晓"（拉取式状态查询）
 		if (toolName === "query_state") {

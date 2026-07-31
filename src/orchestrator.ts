@@ -18,6 +18,7 @@ import { buildSystemPrompt } from "./prompts";
 import type { ServiceEvent } from "./protocol";
 import type { Sink } from "./sink";
 import type { StateStore } from "./state-store";
+import type { Supervisor } from "./supervisor";
 import { ALL_TOOLS } from "./tools";
 import type { AgentEvent, ChatMessage, LLMResponse } from "./types";
 import { MAX_REACT_ITERATIONS } from "./types";
@@ -61,6 +62,7 @@ export class Orchestrator {
 		threadId?: string,
 		gate?: FlowGate,
 		stateStore?: StateStore,
+		supervisor?: Supervisor,
 	) {
 		this.inbox = inbox ?? new Inbox();
 		this.registry = registry ?? new AgentRegistry();
@@ -74,6 +76,7 @@ export class Orchestrator {
 			this.harness = new Harness();
 		}
 		if (stateStore) this.harness.setStateStore(stateStore);
+		if (supervisor) this.harness.setSupervisor(supervisor);
 	}
 
 	/** 重置对话历史（chat 模式 "/clear" 命令调用） */

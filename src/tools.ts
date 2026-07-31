@@ -224,6 +224,35 @@ const dispatchTool: ToolDefinition = {
 	},
 };
 
+/** create_service 工具的 schema（供编排Agent LLM 识别；执行由 ToolExecutor 特判） */
+const createServiceTool: ToolDefinition = {
+	type: "function",
+	function: {
+		name: "create_service",
+		description:
+			"生成并部署一个新的常驻 agent 服务（创生，framework-design §10）：生成 services/<id>/ 目录（契约 + 入口骨架）并由 Supervisor 启动。参数：name（必填，服务名）、description、archetype（pusher 推进型 / watcher 监控型 / interactive 交互型 / hybrid）。",
+		parameters: {
+			type: "object",
+			required: ["name"],
+			properties: {
+				name: {
+					type: "string",
+					description: "（必填）服务名，如 news-scraper",
+				},
+				description: {
+					type: "string",
+					description: "（可选）服务职责描述",
+				},
+				archetype: {
+					type: "string",
+					enum: ["pusher", "watcher", "interactive", "hybrid"],
+					description: "（可选）服务原型，默认 pusher",
+				},
+			},
+		},
+	},
+};
+
 /** query_state 工具的 schema（供编排Agent LLM 识别；执行由 ToolExecutor 特判） */
 const queryStateTool: ToolDefinition = {
 	type: "function",
@@ -251,6 +280,7 @@ export const ALL_TOOLS: ToolDefinition[] = [
 	bashTool,
 	dispatchTool,
 	queryStateTool,
+	createServiceTool,
 ];
 
 /** 根据工具名称执行（不走权限检查，直接调用） */
