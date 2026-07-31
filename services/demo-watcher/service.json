@@ -1,0 +1,18 @@
+{
+  "id": "demo-watcher",
+  "version": "1.0.0",
+  "name": "演示监控服务",
+  "description": "示例：监控型服务——每 5s 检测一次，常态 silent，命中才 notify",
+  "archetype": "watcher",
+  "execution": "watch",
+  "entry": "services/demo-watcher/entry.ts",
+  "tools": ["read", "grep"],
+  "capabilities": ["detect-opportunity"],
+  "emits": ["scan.done", "opportunity.found"],
+  "consumes": [],
+  "permissions": {
+    "fs": ["read"],
+    "tools": ["read", "grep"],
+    "paths": ["services/demo-watcher/data"]
+  }
+}

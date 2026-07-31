@@ -234,6 +234,7 @@ function buildDispatchConfigFromContract(
 			role: contract.name,
 		},
 		allowed_tools: contract.permissions.tools ?? contract.tools,
+		permissions: contract.permissions, // 下发到节点进程，ToolExecutor 强制执行
 		responseSchema: {
 			type: "object",
 			properties: { result: { type: "string" } },

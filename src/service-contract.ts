@@ -10,13 +10,15 @@ export type Archetype = "pusher" | "watcher" | "interactive" | "hybrid";
 export type ExecutionMode = "react" | "cron" | "watch" | "external";
 
 export interface ServicePermissions {
-	/** fs 白名单：read / write / exec */
+	/** fs 能力：read / write / exec */
 	fs?: ("read" | "write" | "exec")[];
 	/** 网络白名单：允许的域名/URL 前缀 */
 	net?: string[];
-	/** 工具白名单（bash 默认禁用） */
+	/** 工具白名单（bash 默认不在内 = 默认禁用） */
 	tools?: string[];
-	/** 批准点：需要用户确认的操作清单（Phase 4 接入确认 UI，本轮仅声明） */
+	/** 路径白名单：允许的目录前缀（相对仓库根）；未声明 = 仅允许 cwd 内相对路径 */
+	paths?: string[];
+	/** 批准点：需要用户确认的操作清单（Phase 4 接入确认 UI，本轮声明后一律拒绝） */
 	approval?: string[];
 }
 
@@ -29,7 +31,7 @@ export interface ServiceContract {
 	archetype: Archetype;
 	/** harness 异构声明：react / cron / watch / external */
 	execution: ExecutionMode;
-	/** 相对入口文件（bun run services/<id>/<entry>） */
+	/** 入口文件（相对仓库根，bun run <entry>；服务目录约定 services/<id>/） */
 	entry: string;
 	/** 节点系统提示词（可省略，entry 自带） */
 	prompt?: string;
@@ -110,7 +112,7 @@ export function validateContract(raw: unknown): ContractValidation {
 			errors.push("permissions 必须是对象");
 		} else {
 			const p = perms as Record<string, unknown>;
-			for (const key of ["fs", "net", "tools", "approval"]) {
+			for (const key of ["fs", "net", "tools", "paths", "approval"]) {
 				if (p[key] !== undefined && !Array.isArray(p[key])) {
 					errors.push(`permissions.${key} 必须是数组`);
 				}

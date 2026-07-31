@@ -68,6 +68,8 @@ export interface DispatchConfig {
 
 	/** worktree 隔离执行：在独立 git worktree 中运行，避免并行写冲突。仅当多个子Agent 可能写同一文件时需要。 */
 	isolation?: "worktree";
+	/** 服务契约权限（Supervisor 下发到节点进程，ToolExecutor 强制执行，framework-design §9） */
+	permissions?: ServicePermissions;
 	/** 可选：计划上下文（已弃用，改用 plan.md 文件） */
 	plan?: {
 		goal: string;
@@ -96,6 +98,7 @@ export interface SubAgentResult {
 // ---- 事件驱动通信类型 ----
 
 import type { EventLevel } from "./protocol";
+import type { ServicePermissions } from "./service-contract";
 
 /** 事件类型：收件箱中的消息 */
 export type AgentEventType = "user_message" | "agent_done" | "agent_error";

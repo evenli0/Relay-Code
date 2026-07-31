@@ -39,6 +39,11 @@ const initialConfig: DispatchConfig = JSON.parse(
 // ─── 节点状态（进程存活期间一直保留）──────────────────
 const executor = new ToolExecutor();
 
+// 服务契约权限（Supervisor 下发）：无声明则不限制（旧路径兼容）
+if (initialConfig.permissions) {
+	executor.setPermissions(initialConfig.permissions);
+}
+
 // 基础消息（系统提示 + 启动时注入的用户上下文）
 const baseMessages: ChatMessage[] = (await assembleMessages(initialConfig)).map(
 	(m) => {

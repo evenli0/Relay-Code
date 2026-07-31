@@ -2,6 +2,7 @@ import path from "node:path";
 import type { AgentRegistry } from "./agent-registry";
 import { dispatchAsync } from "./dispatcher";
 import type { Inbox } from "./inbox";
+import type { ServicePermissions } from "./service-contract";
 import { ALL_TOOLS, resolveShell } from "./tools";
 import type { DispatchConfig, SubAgentResult } from "./types";
 
@@ -19,12 +20,23 @@ export class ToolExecutor {
 	registry?: AgentRegistry;
 	threadId?: string;
 	sink?: import("./sink").Sink;
+	/** 服务契约权限（framework-design §9）；null = 旧模式不限制 */
+	private contractPermissions: ServicePermissions | null = null;
+
+	/** 注入服务契约权限（Supervisor/actor 启动时） */
+	setPermissions(p: ServicePermissions | null): void {
+		this.contractPermissions = p;
+	}
 
 	async executeToolCall(
 		toolName: string,
 		args: Record<string, unknown>,
 		cwd?: string,
 	): Promise<string> {
+		// 权限 enforcement：契约声明之外的一律拒绝（framework-design §9）
+		const denied = this.enforce(toolName, args);
+		if (denied) return denied;
+
 		// dispatch 工具
 		if (toolName === "dispatch") {
 			const task = String(args.task ?? "").trim();
@@ -107,6 +119,36 @@ export class ToolExecutor {
 		return await tool.execute(resolvedArgs);
 	}
 
+	private enforce(
+		toolName: string,
+		args: Record<string, unknown>,
+	): string | null {
+		const p = this.contractPermissions;
+		if (!p) return null; // 无权限声明 = 旧模式不限制（逐步迁移）
+
+		// 工具白名单（bash 默认不在内 = 默认禁用）
+		const allowed = p.tools ?? ["read", "grep"];
+		if (!allowed.includes(toolName)) {
+			return `权限拒绝：工具 ${toolName} 不在白名单（允许: ${allowed.join(", ")}）`;
+		}
+
+		// 批准点：声明为需确认的操作（Phase 4 接用户确认 UI，当前一律拒绝）
+		if (p.approval?.includes(toolName)) {
+			return `权限拒绝：操作 ${toolName} 需要用户确认（批准点，Phase 4 接入）`;
+		}
+
+		// fs 路径白名单
+		if (
+			(toolName === "read" || toolName === "write") &&
+			typeof args.path === "string"
+		) {
+			if (!isPathAllowed(String(args.path), p)) {
+				return `权限拒绝：路径 ${args.path} 超出白名单`;
+			}
+		}
+		return null;
+	}
+
 	private resolveCwdArgs(
 		_toolName: string,
 		args: Record<string, unknown>,
@@ -119,4 +161,19 @@ export class ToolExecutor {
 		}
 		return newArgs;
 	}
+}
+
+/** 路径白名单：绝对路径必须落在允许前缀内；未声明前缀时只允许 cwd 内相对路径 */
+function isPathAllowed(raw: string, perms: ServicePermissions): boolean {
+	const p = raw.replace(/\\/g, "/");
+	const prefixes = perms.paths ?? [];
+	if (prefixes.length === 0) {
+		// 未声明目录：只允许相对路径（不越出 cwd）
+		return !p.startsWith("/") && !/^[a-zA-Z]:/.test(p) && !p.startsWith("../");
+	}
+	for (const prefix of prefixes) {
+		const norm = prefix.replace(/\\/g, "/").replace(/\/+$/, "");
+		if (p === norm || p.startsWith(`${norm}/`)) return true;
+	}
+	return false;
 }

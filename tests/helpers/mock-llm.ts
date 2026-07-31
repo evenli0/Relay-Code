@@ -5,26 +5,36 @@
  * 用法：
  *   const llm = new ScriptedLLM([text("答案"), toolSequence(...)]);
  *   setMockTransport(llm);
+ *
+ * 最后一条响应作为兜底（超出预设后重复）；push() 在兜底前插入预设。
  */
 
 import type { LLMTransport } from "../../src/llm";
-import type { LLMResponse, ToolCall } from "../../src/types";
+import type { ChatMessage, LLMResponse, ToolCall } from "../../src/types";
 
-/** 按顺序消费预设响应；超出部分重复最后一条 */
+/** 按顺序消费预设响应；超出部分重复最后一条（兜底） */
 export class ScriptedLLM implements LLMTransport {
 	private responses: LLMResponse[];
 	private index = 0;
 	public calls = 0;
+	/** 每次调用的 messages 参数（供消息结构断言） */
+	public callMessages: ChatMessage[][] = [];
 
 	constructor(responses: LLMResponse[]) {
 		if (responses.length === 0) {
-			throw new Error("ScriptedLLM 需要至少一条预设响应");
+			throw new Error("ScriptedLLM 需要至少一条预设响应（最后一条作为兜底）");
 		}
 		this.responses = responses;
 	}
 
-	async complete(): Promise<LLMResponse> {
+	/** 在兜底响应之前插入预设（模拟"排队"） */
+	push(...responses: LLMResponse[]): void {
+		this.responses.splice(this.responses.length - 1, 0, ...responses);
+	}
+
+	async complete(messages: ChatMessage[]): Promise<LLMResponse> {
 		this.calls++;
+		this.callMessages.push(messages);
 		const r = this.responses[Math.min(this.index, this.responses.length - 1)];
 		if (this.index < this.responses.length - 1) this.index++;
 		return r;

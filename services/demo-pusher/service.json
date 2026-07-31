@@ -1,0 +1,18 @@
+{
+  "id": "demo-pusher",
+  "version": "1.0.0",
+  "name": "演示推进服务",
+  "description": "示例：推进型服务——每 10s 上报一次学习状态（state 通道）",
+  "archetype": "pusher",
+  "execution": "cron",
+  "entry": "services/demo-pusher/entry.ts",
+  "tools": ["read", "write", "grep"],
+  "capabilities": ["report-state"],
+  "emits": ["state.reported"],
+  "consumes": [],
+  "permissions": {
+    "fs": ["read", "write"],
+    "tools": ["read", "write", "grep"],
+    "paths": ["services/demo-pusher/data"]
+  }
+}
