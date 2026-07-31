@@ -176,6 +176,7 @@ ${e.text}
 		"  reload                  热加载 services/ 目录（启动新增/停止移除）",
 	);
 	console.log("  approve <svc> <tool>    批准服务的高危操作（批准点，记忆化）");
+	console.log("  export/install/rollback 服务包市场（rpk：导出/安装/回滚）");
 	console.log("  exit                    退出");
 	console.log("");
 
@@ -294,6 +295,84 @@ ${e.text}
 			console.log(
 				`已批准: ${serviceId} 的 ${tool}（记忆化到 .relay/approvals.jsonl，后续自动放行）`,
 			);
+			process.stdout.write("> ");
+			return;
+		}
+
+		if (input.startsWith("export ")) {
+			// export <serviceId> —— 导出 rpk 包（集群 App 市场，Phase5-B）
+			const serviceId = input.slice(7).trim();
+			if (!serviceId) {
+				console.log("用法: export <serviceId>");
+				process.stdout.write("> ");
+				return;
+			}
+			const { exportServicePackage } = await import("./service-package");
+			const r = exportServicePackage(serviceId);
+			if (!r.ok) {
+				console.log(`导出失败: ${r.error}`);
+			} else {
+				console.log(`已导出: ${r.path}`);
+			}
+			process.stdout.write("> ");
+			return;
+		}
+
+		if (input.startsWith("install ")) {
+			// install <rpk路径> —— 安装服务包并热加载
+			const pkgPath = input.slice(8).trim();
+			if (!pkgPath) {
+				console.log("用法: install <rpk路径>");
+				process.stdout.write("> ");
+				return;
+			}
+			const { readFileSync } = await import("node:fs");
+			const { installPackage, validatePackage } = await import(
+				"./service-package"
+			);
+			let raw: unknown;
+			try {
+				raw = JSON.parse(readFileSync(pkgPath, "utf-8")) as unknown;
+			} catch (e) {
+				console.log(`安装失败: 包读取失败 ${e}`);
+				process.stdout.write("> ");
+				return;
+			}
+			const v = validatePackage(raw);
+			if (!v.ok) {
+				console.log(`安装失败: ${v.errors.join("; ")}`);
+				process.stdout.write("> ");
+				return;
+			}
+			const r = installPackage(v.pkg);
+			if (!r.ok) {
+				console.log(`安装失败: ${r.error}`);
+			} else {
+				console.log(
+					`已安装: ${r.installed}${r.backedUp ? `（旧版已备份: ${r.backedUp}）` : ""}，reload 生效中...`,
+				);
+				supervisor.sync();
+			}
+			process.stdout.write("> ");
+			return;
+		}
+
+		if (input.startsWith("rollback ")) {
+			// rollback <serviceId> —— 回滚到最近备份
+			const serviceId = input.slice(9).trim();
+			if (!serviceId) {
+				console.log("用法: rollback <serviceId>");
+				process.stdout.write("> ");
+				return;
+			}
+			const { rollbackService } = await import("./service-package");
+			const r = rollbackService(serviceId);
+			if (!r.ok) {
+				console.log(`回滚失败: ${r.error}`);
+			} else {
+				console.log(`已回滚到: ${r.from}，reload 生效中...`);
+				supervisor.sync();
+			}
 			process.stdout.write("> ");
 			return;
 		}
