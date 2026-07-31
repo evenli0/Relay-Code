@@ -72,6 +72,13 @@ process.stdout.write(
 	`${encodeServiceEvent({ kind: "ready", ts: Date.now() })}\n`,
 );
 
+// 心跳：Supervisor 据此检测僵死（framework-design §3）
+setInterval(() => {
+	process.stdout.write(
+		`${encodeServiceEvent({ kind: "heartbeat", ts: Date.now() })}\n`,
+	);
+}, 30_000);
+
 // ─── 事件循环：从 stdin 读 JSONL，永不退出 ─────────
 const decoder = new TextDecoder();
 let stdinBuf = "";

@@ -28,8 +28,10 @@ export class ActorHandle {
 	private pending = new Map<string, (event: ServiceEvent) => void>();
 	public agentId: string;
 	public onEvent?: (msg: ServiceEvent) => void;
+	/** 进程退出钩子（Supervisor 用：重启/失败判定） */
+	public onExit?: (exitCode: number) => void;
 
-	constructor(agentId: string, config: DispatchConfig) {
+	constructor(agentId: string, config: DispatchConfig, entry = "src/actor.ts") {
 		this.agentId = agentId;
 
 		// 写任务文件（actor.ts 读它初始化）
@@ -44,7 +46,7 @@ export class ActorHandle {
 		);
 
 		// spawn 节点进程
-		this.proc = Bun.spawn(["bun", "run", "src/actor.ts", taskPath], {
+		this.proc = Bun.spawn(["bun", "run", entry, taskPath], {
 			stdin: "pipe",
 			stdout: "pipe",
 			stderr: "inherit",
@@ -54,6 +56,7 @@ export class ActorHandle {
 			process.stderr.write(
 				`[ActorHandle] ${agentId.slice(-8)} 进程退出 (exit=${exitCode})\n`,
 			);
+			this.onExit?.(exitCode);
 		});
 
 		this.readLoop();
@@ -156,6 +159,17 @@ export class ActorHandle {
 	/** 运行时更换工具集 */
 	configure(tools: string[]): void {
 		this.send({ kind: "configure", tools });
+	}
+
+	/** 强制终止（心跳僵死判定用） */
+	kill(): void {
+		if (!this.proc.killed) {
+			try {
+				this.proc.kill();
+			} catch {
+				/* ignore */
+			}
+		}
 	}
 
 	/** 优雅关闭 */
