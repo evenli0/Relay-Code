@@ -15,6 +15,7 @@ import { Inbox } from "./inbox";
 import { callLLM } from "./llm";
 import { saveDialogue } from "./memory";
 import { buildSystemPrompt } from "./prompts";
+import type { ServiceEvent } from "./protocol";
 import type { Sink } from "./sink";
 import type { StateStore } from "./state-store";
 import { ALL_TOOLS } from "./tools";
@@ -271,6 +272,62 @@ export class Orchestrator {
 		}
 	}
 
+	/**
+	 * 服务事件入口（Supervisor.onNodeEvent 接入，Phase3-A）：
+	 * 门控决策 + 分级语义映射——silent/trace 吸收、info 展示、notify 走通知出口，
+	 * 用户规则（rule 命令）优先覆盖。
+	 */
+	handleServiceEvent(serviceId: string, event: ServiceEvent): void {
+		if (event.kind !== "event") return; // state/heartbeat 进 StateStore，不进决策
+
+		let action = this.gate.decide({
+			type: "agent_done",
+			threadId: this.currentThreadId,
+			timestamp: event.ts,
+			agentRole: serviceId,
+			agentId: serviceId,
+			level: event.level,
+			eventType: event.type,
+		} as AgentEvent);
+
+		// 分级语义：门控默认"show"针对 agent_done；服务事件按 level 细化
+		if (action === "show") {
+			if (event.level === "silent" || event.level === "trace") {
+				action = "digest";
+			} else if (event.level === "notify") {
+				action = "notify";
+			}
+		}
+
+		const payload = formatPayload(event.payload);
+		switch (action) {
+			case "show":
+				console.log(`\n### [${serviceId}] ${event.type}\n${payload}\n`);
+				break;
+			case "notify": {
+				console.log(`\n🔔 [${serviceId}] ${event.type}\n${payload}\n`);
+				this.emit({
+					kind: "notice",
+					level: "notify",
+					text: `[${serviceId}] ${event.type}: ${payload.slice(0, 200)}`,
+				});
+				break;
+			}
+			case "digest":
+				this.digestQueue.push({
+					type: "agent_done",
+					threadId: this.currentThreadId,
+					timestamp: event.ts,
+					agentRole: serviceId,
+					level: event.level,
+					eventType: event.type,
+				} as AgentEvent);
+				break;
+			case "drop":
+				break;
+		}
+	}
+
 	/** 静默归档摘要：把 digest 队列合成一行输出（不占 LLM 上下文） */
 	private flushDigest(): void {
 		if (this.digestQueue.length === 0) return;
@@ -518,5 +575,15 @@ export class Orchestrator {
 		await saveDialogue("user", input);
 
 		return this.reactLoop();
+	}
+}
+
+/** 服务事件 payload 展示格式化 */
+function formatPayload(payload: unknown): string {
+	if (payload === undefined) return "";
+	try {
+		return JSON.stringify(payload);
+	} catch {
+		return String(payload);
 	}
 }

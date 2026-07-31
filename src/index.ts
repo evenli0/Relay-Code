@@ -103,6 +103,22 @@ async function daemonMode(): Promise<void> {
 		stateStore,
 	);
 
+	// 服务集群接入：Supervisor 管理常驻服务，事件进状态模型 + 门控通知
+	const { Scheduler } = await import("./scheduler");
+	const { Supervisor } = await import("./supervisor");
+	const scheduler = new Scheduler();
+	const supervisor = new Supervisor({ scheduler });
+	supervisor.onNodeEvent = (id, msg) => {
+		stateStore.ingest(id, msg);
+		orchestrator.handleServiceEvent(id, msg);
+	};
+	const restored = supervisor.restore();
+	if (restored.length > 0) {
+		console.log(
+			`[集群] 已恢复 ${restored.length} 个服务: ${restored.join(", ")}`,
+		);
+	}
+
 	// Sink 事件总线
 	const { MultiSink } = await import("./sink");
 	const { createWsSink } = await import("./server");
