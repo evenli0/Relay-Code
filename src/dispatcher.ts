@@ -139,6 +139,8 @@ export async function dispatchAsync(
 						result: { status: "completed", output: msg.output },
 						agentRole: role,
 						agentId,
+						level: "info",
+						eventType: "agent.done",
 					});
 				} else {
 					registry.markError(agentId, msg.output);
@@ -156,6 +158,8 @@ export async function dispatchAsync(
 						error: msg.output,
 						agentRole: role,
 						agentId,
+						level: "notify",
+						eventType: "agent.error",
 					});
 				}
 			}
@@ -217,6 +221,8 @@ export async function dispatchAsync(
 							result,
 							agentRole: role,
 							agentId,
+							level: "info",
+							eventType: "agent.done",
 						});
 					} else {
 						const err = result.output ?? `exit ${exitCode}`;
@@ -230,6 +236,8 @@ export async function dispatchAsync(
 							error: err,
 							agentRole: role,
 							agentId,
+							level: "notify",
+							eventType: "agent.error",
 						});
 					}
 				} else {

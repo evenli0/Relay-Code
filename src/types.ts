@@ -95,6 +95,8 @@ export interface SubAgentResult {
 
 // ---- 事件驱动通信类型 ----
 
+import type { EventLevel } from "./protocol";
+
 /** 事件类型：收件箱中的消息 */
 export type AgentEventType = "user_message" | "agent_done" | "agent_error";
 
@@ -114,6 +116,10 @@ export interface AgentEvent {
 	agentRole?: string;
 	/** agent_done/agent_error 时：agent 的唯一 ID */
 	agentId?: string;
+	/** 事件级别（门控用，framework-design §1） */
+	level?: EventLevel;
+	/** 事件类型（门控用，与契约 emits 对齐） */
+	eventType?: string;
 }
 
 /** 运行时检查：判断原始参数是否为有效的 DispatchConfig */

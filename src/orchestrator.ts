@@ -9,6 +9,7 @@ import {
 	toolResultLine,
 } from "./display";
 import { unwrapError } from "./errors";
+import { FlowGate } from "./flow-gate";
 import { Harness } from "./harness";
 import { Inbox } from "./inbox";
 import { callLLM } from "./llm";
@@ -38,6 +39,8 @@ export class Orchestrator {
 	private registry: AgentRegistry;
 	private currentThreadId: string;
 	private sink: Sink | null = null;
+	private gate: FlowGate;
+	private digestQueue: AgentEvent[] = [];
 
 	setSink(s: Sink): void {
 		this.sink = s;
@@ -48,9 +51,15 @@ export class Orchestrator {
 		if (this.sink) this.sink.emit(e as never);
 	}
 
-	constructor(inbox?: Inbox, registry?: AgentRegistry, threadId?: string) {
+	constructor(
+		inbox?: Inbox,
+		registry?: AgentRegistry,
+		threadId?: string,
+		gate?: FlowGate,
+	) {
 		this.inbox = inbox ?? new Inbox();
 		this.registry = registry ?? new AgentRegistry();
+		this.gate = gate ?? new FlowGate();
 		this.currentThreadId = threadId ?? `thread-${Date.now().toString(36)}`;
 		// 仅在显式传入时启用异步模式（daemon 模式），否则兼容同步 dispatch
 		if (inbox && registry) {
@@ -81,8 +90,9 @@ export class Orchestrator {
 		milestone(`Thread: ${this.currentThreadId}`);
 		milestone("等待指令...\n");
 
-		// 每 10 轮做一次 registry 清理
+		// 每 10 轮做一次 registry 清理；每 30s 吐一次静默摘要
 		let cleanupCounter = 0;
+		let tick = 0;
 
 		while (true) {
 			if (this.inbox.isEmpty()) {
@@ -92,6 +102,7 @@ export class Orchestrator {
 					this.registry.cleanup();
 					cleanupCounter = 0;
 				}
+				if (++tick % 30 === 0) this.flushDigest();
 				continue;
 			}
 
@@ -140,6 +151,9 @@ export class Orchestrator {
 		const input = event.content ?? "";
 		if (!input.trim()) return;
 
+		// 用户开口前先吐出静默归档的摘要
+		this.flushDigest();
+
 		const snapshot = this.registry.getSnapshot();
 
 		// 首轮初始化 system prompt
@@ -173,46 +187,71 @@ export class Orchestrator {
 	 * 将多个 agent 的完成结果一起注入给 LLM，让它有全局视野做决策。
 	 */
 	private async processAgentBatch(dones: AgentEvent[]): Promise<void> {
-		const details = dones
-			.map((d) => {
-				const role = d.agentRole ?? "未知";
-				const output = d.result?.output?.slice(0, 500) ?? "无输出";
-				const id = d.agentId?.slice(-8) ?? "";
-				const status = d.type === "agent_error" ? "❌ ERROR" : "✅ DONE";
-				return `### ${status} [${role}] (${id})\n${output}`;
-			})
-			.join("\n\n---\n\n");
-
 		const total = this.registry.size;
 		const running = this.registry.getRunning().length;
-
-		// 直接展示给用户，不依赖 LLM 合成
-		console.log(`\n${"=".repeat(60)}`);
-		console.log(
-			`📬 子 Agent 完成通知 — ${dones.length} 个完成，${running} 个运行中，共 ${total} 个`,
-		);
-		console.log("=".repeat(60));
-		console.log(details);
-		console.log(`${"=".repeat(60)}\n`);
-
-		const batchMsg = [
-			`## 子 Agent 执行结果（${dones.length} 个完成，${running} 个仍在运行，共 ${total} 个）`,
-			details,
-			this.registry.getSnapshot(),
-		].join("\n\n");
-
 		milestone(`${dones.length} 个子 Agent 完成`);
 
-		// 注入给 LLM，让它知晓结果
-		this.messages.push({ role: "system", content: batchMsg });
-		await saveDialogue("system", batchMsg);
+		// 纯代码调度：不再调用 LLM（framework-design §4，LLM 卸任）。
+		// 门控规则决定每个事件的去向：show 展示 / digest 静默归档 / notify 通知出口 / drop 丢弃
+		for (const d of dones) {
+			const action = this.gate.decide(d);
+			const role = d.agentRole ?? "未知";
+			const id = d.agentId?.slice(-8) ?? "";
 
-		// 让 LLM 给出简要总结（而不是完整 reactLoop）
-		const result = await this.reactLoop();
-		if (result && !result.startsWith("任务未在限定轮次")) {
-			this.emit({ kind: "llm_response", text: result });
+			switch (action) {
+				case "show": {
+					const output = d.result?.output?.slice(0, 500) ?? "无输出";
+					const status = d.type === "agent_error" ? "❌ ERROR" : "✅ DONE";
+					console.log(`\n### ${status} [${role}] (${id})\n${output}\n`);
+					await saveDialogue(
+						"system",
+						`[子Agent结果|show] [${role}] ${output}`,
+					);
+					break;
+				}
+				case "notify": {
+					// Phase 2 接通知出口（WS/桌面）；当前与 show 同路径
+					const output = d.result?.output?.slice(0, 500) ?? "无输出";
+					console.log(`\n🔔 [${role}] (${id})\n${output}\n`);
+					await saveDialogue(
+						"system",
+						`[子Agent结果|notify] [${role}] ${output}`,
+					);
+					break;
+				}
+				case "digest": {
+					this.digestQueue.push(d);
+					await saveDialogue(
+						"system",
+						`[子Agent结果|digest] [${role}] ${d.result?.output?.slice(0, 200) ?? "无输出"}`,
+					);
+					break;
+				}
+				case "drop": {
+					await saveDialogue("system", `[子Agent结果|drop] [${role}]`);
+					break;
+				}
+			}
 		}
-		// prompt 已在 TerminalSink 中输出
+
+		console.log(
+			`📊 集群: ${dones.length} 个完成，${running} 个运行中，共 ${total} 个`,
+		);
+	}
+
+	/** 静默归档摘要：把 digest 队列合成一行输出（不占 LLM 上下文） */
+	private flushDigest(): void {
+		if (this.digestQueue.length === 0) return;
+		const byRole = new Map<string, number>();
+		for (const d of this.digestQueue) {
+			const role = d.agentRole ?? "未知";
+			byRole.set(role, (byRole.get(role) ?? 0) + 1);
+		}
+		const parts = [...byRole.entries()].map(([r, n]) => `${r}×${n}`).join(", ");
+		console.log(
+			`📥 摘要: ${this.digestQueue.length} 个子 Agent 结果已静默归档（${parts}）`,
+		);
+		this.digestQueue = [];
 	}
 
 	// ─── ReAct 循环（核心逻辑不变）────────────────────────────
@@ -410,6 +449,9 @@ export class Orchestrator {
 		if (agentDones.length > 0) {
 			await this.processAgentBatch(agentDones);
 		}
+
+		// 用户开口前先吐出静默归档摘要
+		this.flushDigest();
 
 		// 处理 User 消息（主要逻辑）
 		for (const msg of userMsgs) {
