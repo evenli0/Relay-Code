@@ -6,6 +6,8 @@
  * 行为从契约来，不从代码来（"设计即服务"）。
  */
 
+import type { ScheduleSpec } from "./protocol";
+
 export type Archetype = "pusher" | "watcher" | "interactive" | "hybrid";
 export type ExecutionMode = "react" | "cron" | "watch" | "external";
 
@@ -47,6 +49,8 @@ export interface ServiceContract {
 	emits: string[];
 	/** 能接收的事件类型（路由依据） */
 	consumes: string[];
+	/** 默认节奏（推进型服务用；Scheduler 到点发 schedule 指令，framework-design §7） */
+	schedule?: ScheduleSpec;
 	permissions: ServicePermissions;
 }
 

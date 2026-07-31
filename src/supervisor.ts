@@ -13,6 +13,7 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { ActorHandle } from "./actor-handle";
 import type { ServiceEvent } from "./protocol";
+import type { Scheduler } from "./scheduler";
 import { type ServiceContract, validateContract } from "./service-contract";
 import type { DispatchConfig } from "./types";
 
@@ -36,24 +37,28 @@ export interface SupervisorOptions {
 	watchdogIntervalMs?: number;
 	backoffBaseMs?: number;
 	logger?: (msg: string) => void;
+	/** 节奏调度器：契约 schedule → 到点向节点发 schedule 指令（framework-design §7） */
+	scheduler?: Scheduler;
 }
 
-const DEFAULT_OPTS: Required<Omit<SupervisorOptions, "logger">> = {
-	heartbeatTimeoutMs: 60_000,
-	maxConsecutiveFailures: 5,
-	watchdogIntervalMs: 5_000,
-	backoffBaseMs: 1_000,
-};
+const DEFAULT_OPTS: Required<Omit<SupervisorOptions, "logger" | "scheduler">> =
+	{
+		heartbeatTimeoutMs: 60_000,
+		maxConsecutiveFailures: 5,
+		watchdogIntervalMs: 5_000,
+		backoffBaseMs: 1_000,
+	};
 
 const MAX_BACKOFF_MS = 300_000;
 
 export class Supervisor {
 	private nodes = new Map<string, SupervisedNode>();
-	private opts: Required<Omit<SupervisorOptions, "logger">>;
+	private opts: Required<Omit<SupervisorOptions, "logger" | "scheduler">>;
 	private logger: (msg: string) => void;
 	private watchdog: ReturnType<typeof setInterval> | null = null;
+	private scheduler?: Scheduler;
 
-	/** 节点事件转发（Step C 接 EventBus / StateStore） */
+	/** 节点事件转发（→ StateStore / EventBus） */
 	public onNodeEvent?: (id: string, msg: ServiceEvent) => void;
 
 	constructor(options: SupervisorOptions = {}) {
@@ -61,6 +66,7 @@ export class Supervisor {
 		this.logger =
 			options.logger ??
 			((msg) => process.stderr.write(`[Supervisor] ${msg}\n`));
+		this.scheduler = options.scheduler;
 	}
 
 	/** 启动一个服务节点（已存在则忽略） */
@@ -90,6 +96,14 @@ export class Supervisor {
 		node.handle = this.spawn(node, configOverride);
 		this.nodes.set(id, node);
 		this.ensureWatchdog();
+
+		// 契约 schedule → Scheduler 到点发 schedule 指令（时间轴推进）
+		const schedule = contract.schedule;
+		if (this.scheduler && schedule) {
+			this.scheduler.register(id, schedule, () => {
+				node.handle?.send({ kind: "schedule", spec: schedule });
+			});
+		}
 		return id;
 	}
 
@@ -153,6 +167,7 @@ export class Supervisor {
 		if (!node) return;
 		node.stopped = true;
 		if (node.restartTimer) clearTimeout(node.restartTimer);
+		this.scheduler?.unregister(id);
 		node.handle?.shutdown();
 		node.status = "stopped";
 		this.logger(`${id} 停止（${reason}）`);

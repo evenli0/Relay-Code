@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { Scheduler } from "../src/scheduler";
 import type { ServiceContract } from "../src/service-contract";
 import { Supervisor } from "../src/supervisor";
 
@@ -79,5 +80,30 @@ describe("Supervisor", () => {
 		expect(st?.status).toBe("stopped");
 		expect(st?.restartCount).toBe(0);
 		s.stopAll();
+	});
+
+	test("契约 schedule → Scheduler 到点向节点发 schedule 指令", async () => {
+		const received: unknown[] = [];
+		const scheduler = new Scheduler({ tickMs: 50, logger: () => {} });
+		const s = new Supervisor({
+			heartbeatTimeoutMs: 1200,
+			maxConsecutiveFailures: 3,
+			watchdogIntervalMs: 150,
+			backoffBaseMs: 50,
+			logger: () => {},
+			scheduler,
+		});
+		s.onNodeEvent = (id, msg) => {
+			if (msg.kind === "event" && msg.type === "schedule.received") {
+				received.push(msg.payload);
+			}
+		};
+		const contract = base("sched");
+		contract.schedule = { type: "interval", every: "150ms" };
+		s.start(contract, { fixtureMode: "schedule-log" } as never);
+		await sleep(700);
+		expect(received.length).toBeGreaterThanOrEqual(1);
+		s.stopAll();
+		scheduler.stopAll();
 	});
 });
