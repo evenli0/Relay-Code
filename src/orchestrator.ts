@@ -1,4 +1,5 @@
 import { AgentRegistry } from "./agent-registry";
+import type { Correlator } from "./correlator";
 import {
 	clearStatusLine,
 	milestone,
@@ -45,7 +46,9 @@ export class Orchestrator {
 	private gate: FlowGate;
 	private digestQueue: AgentEvent[] = [];
 	private stateStore?: StateStore;
+	private correlator?: Correlator;
 	private lastStateSummary = "";
+	private lastCorrelationSummary = "";
 
 	setSink(s: Sink): void {
 		this.sink = s;
@@ -63,11 +66,13 @@ export class Orchestrator {
 		gate?: FlowGate,
 		stateStore?: StateStore,
 		supervisor?: Supervisor,
+		correlator?: Correlator,
 	) {
 		this.inbox = inbox ?? new Inbox();
 		this.registry = registry ?? new AgentRegistry();
 		this.gate = gate ?? new FlowGate();
 		this.stateStore = stateStore;
+		this.correlator = correlator;
 		this.currentThreadId = threadId ?? `thread-${Date.now().toString(36)}`;
 		// 仅在显式传入时启用异步模式（daemon 模式），否则兼容同步 dispatch
 		if (inbox && registry) {
@@ -172,6 +177,9 @@ export class Orchestrator {
 		// 服务状态摘要（L1，变化去重注入——"知晓"的推送侧）
 		this.injectStateSummary();
 
+		// 关联候选（触发点 1：用户对话时注入，framework-design §8）
+		this.injectCorrelation();
+
 		const snapshot = this.registry.getSnapshot();
 
 		// 首轮初始化 system prompt
@@ -262,6 +270,19 @@ export class Orchestrator {
 		);
 	}
 
+	/** 关联候选注入：跨服务上下文关联（"你学的 X 赛道今天异动"） */
+	private injectCorrelation(): void {
+		if (!this.correlator) return;
+		const summary = this.correlator.getCorrelationSummary();
+		if (summary && summary !== this.lastCorrelationSummary) {
+			this.lastCorrelationSummary = summary;
+			this.messages.push({
+				role: "system",
+				content: `${summary}\n[关联候选：供你判断是否值得告知用户]`,
+			});
+		}
+	}
+
 	/** 服务状态注入：StateStore L1 摘要，变化才注入（防上下文膨胀） */
 	private injectStateSummary(): void {
 		if (!this.stateStore) return;
@@ -282,6 +303,9 @@ export class Orchestrator {
 	 */
 	handleServiceEvent(serviceId: string, event: ServiceEvent): void {
 		if (event.kind !== "event") return; // state/heartbeat 进 StateStore，不进决策
+
+		// 关联层：带实体的事件进候选池（规则预筛，framework-design §8）
+		this.correlator?.ingest(serviceId, event.type, event.payload, event.ts);
 
 		let action = this.gate.decide({
 			type: "agent_done",
@@ -559,6 +583,9 @@ export class Orchestrator {
 		if (!input.trim()) return "";
 
 		const snapshot = this.registry.getSnapshot();
+
+		// 关联候选（触发点 1：同步路径同样注入）
+		this.injectCorrelation();
 
 		if (this.messages.length === 0) {
 			let systemPrompt = buildSystemPrompt();

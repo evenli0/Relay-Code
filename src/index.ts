@@ -93,6 +93,7 @@ async function daemonMode(): Promise<void> {
 	stateStore.restore(); // 节点重启 ≠ 状态丢失
 	const { FlowGate } = await import("./flow-gate");
 	const { appendNotifyRule, loadNotifyRules } = await import("./notify-rules");
+	const { Correlator } = await import("./correlator");
 	const { Scheduler } = await import("./scheduler");
 	const { Supervisor } = await import("./supervisor");
 	// 门控：文件沉淀规则（用户反馈）+ 默认 show
@@ -100,6 +101,8 @@ async function daemonMode(): Promise<void> {
 	// 服务集群：Supervisor 管理常驻服务 + 节奏调度
 	const scheduler = new Scheduler();
 	const supervisor = new Supervisor({ scheduler });
+	// 关联层：跨服务上下文关联（规则预筛）
+	const correlator = new Correlator();
 	const orchestrator = new Orchestrator(
 		inbox,
 		registry,
@@ -107,6 +110,7 @@ async function daemonMode(): Promise<void> {
 		gate,
 		stateStore,
 		supervisor,
+		correlator,
 	);
 	supervisor.onNodeEvent = (id, msg) => {
 		stateStore.ingest(id, msg);

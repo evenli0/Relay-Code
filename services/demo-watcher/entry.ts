@@ -15,9 +15,15 @@ setInterval(() => {
 			kind: "event",
 			type: hit ? "opportunity.found" : "scan.done",
 			level: hit ? "notify" : "silent",
+			// entities：关联层实体标签（framework-design §8）
 			payload: hit
-				? { confidence: 0.95, asset: "BTC-ETH", windowMin: 10 }
-				: { scanned: n },
+				? {
+						confidence: 0.95,
+						asset: "BTC-ETH",
+						windowMin: 10,
+						entities: ["market/btc", "opportunity/btc-eth"],
+					}
+				: { scanned: n, entities: ["market/btc"] },
 			ts: Date.now(),
 		})}\n`,
 	);
