@@ -208,6 +208,18 @@ ${e.text}
 			} else {
 				console.log(registry.getSnapshot());
 			}
+			// 服务集群健康（守护强化：uptime/重启次数）
+			const svcs = supervisor.getClusterStatus();
+			if (svcs.length > 0) {
+				console.log("\n## 服务集群状态");
+				for (const s of svcs) {
+					const icon =
+						s.status === "running" ? "⟳" : s.status === "error" ? "✗" : "⏹";
+					console.log(
+						`  ${icon} ${s.id}: ${s.status} (uptime ${Math.round(s.uptimeMs / 1000)}s, 重启 ${s.restartCount} 次)`,
+					);
+				}
+			}
 			process.stdout.write("> ");
 			return;
 		}

@@ -179,6 +179,22 @@ export class Supervisor {
 		this.watchdog = null;
 	}
 
+	/** 集群健康汇总（守护强化：status 命令/控制台用） */
+	getClusterStatus(): {
+		id: string;
+		status: string;
+		uptimeMs: number;
+		restartCount: number;
+	}[] {
+		const now = Date.now();
+		return [...this.nodes.entries()].map(([id, n]) => ({
+			id,
+			status: n.status,
+			uptimeMs: now - n.startedAt,
+			restartCount: n.restartCount,
+		}));
+	}
+
 	getStatus(id: string):
 		| {
 				status: string;

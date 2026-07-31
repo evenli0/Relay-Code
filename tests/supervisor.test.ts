@@ -82,6 +82,18 @@ describe("Supervisor", () => {
 		s.stopAll();
 	});
 
+	test("getClusterStatus 健康汇总（守护强化）", async () => {
+		const s = makeSupervisor();
+		s.start(base("health"), { fixtureMode: "live" } as never);
+		await sleep(400);
+		const status = s.getClusterStatus();
+		const h = status.find((x) => x.id === "health");
+		expect(h?.status).toBe("running");
+		expect(h?.uptimeMs).toBeGreaterThanOrEqual(300);
+		expect(h?.restartCount).toBe(0);
+		s.stopAll();
+	});
+
 	test("sync 热加载：新增启动、移除停止", async () => {
 		const s = makeSupervisor();
 		const dir = ".relay/test-services";
