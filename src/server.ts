@@ -43,6 +43,8 @@ export function createWsSink(): Sink {
 				pushConversation(e.text, "agent");
 			} else if (e.kind === "notice" && e.text.startsWith("💡")) {
 				pushConversation(e.text.replace("💡 Web: ", ""), "user");
+			} else if (e.kind === "notice" && e.level === "notify") {
+				pushConversation(`🔔 ${e.text.slice(0, 200)}`, "agent");
 			} else if (e.kind === "agent_done") {
 				pushConversation(
 					`✅ [${e.role}] 完成: ${(e.output || "").slice(0, 300)}`,

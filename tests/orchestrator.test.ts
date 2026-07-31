@@ -4,6 +4,7 @@ import { FlowGate } from "../src/flow-gate";
 import { Inbox } from "../src/inbox";
 import { setMockTransport } from "../src/llm";
 import { Orchestrator } from "../src/orchestrator";
+import type { SinkEvent } from "../src/sink";
 import type { AgentEvent } from "../src/types";
 import { ScriptedLLM, text } from "./helpers/mock-llm";
 
@@ -63,5 +64,38 @@ describe("Orchestrator 纯代码调度（LLM 卸任）", () => {
 
 		expect(logs.some((l) => l.includes("已静默归档"))).toBe(true);
 		expect(llm.calls).toBe(1); // 摘要合成是纯代码，不是 LLM
+	});
+
+	test("notify 动作走通知出口（sink notice）", async () => {
+		const inbox = new Inbox();
+		const registry = new AgentRegistry();
+		const gate = new FlowGate("show", [
+			{ match: { eventType: "agent.done" }, action: "notify" },
+		]);
+		const orch = new Orchestrator(inbox, registry, "t", gate);
+
+		const notices: string[] = [];
+		orch.setSink({
+			emit(e: SinkEvent) {
+				if (e.kind === "notice" && e.level === "notify") {
+					notices.push(e.text);
+				}
+			},
+		});
+
+		const llm = new ScriptedLLM([text("ok")]);
+		setMockTransport(llm);
+
+		const origLog = console.log;
+		console.log = () => {};
+		try {
+			inbox.push(doneEvent());
+			await orch.runReAct("hi");
+		} finally {
+			console.log = origLog;
+		}
+
+		expect(notices.length).toBeGreaterThanOrEqual(1);
+		expect(notices[0]).toContain("研究员");
 	});
 });

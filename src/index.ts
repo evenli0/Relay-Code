@@ -91,11 +91,15 @@ async function daemonMode(): Promise<void> {
 	const { StateStore } = await import("./state-store");
 	const stateStore = new StateStore();
 	stateStore.restore(); // 节点重启 ≠ 状态丢失
+	const { FlowGate } = await import("./flow-gate");
+	const { appendNotifyRule, loadNotifyRules } = await import("./notify-rules");
+	// 门控：文件沉淀规则（用户反馈）+ 默认 show
+	const gate = new FlowGate("show", loadNotifyRules());
 	const orchestrator = new Orchestrator(
 		inbox,
 		registry,
 		undefined,
-		undefined,
+		gate,
 		stateStore,
 	);
 
@@ -145,6 +149,9 @@ ${e.text}
 	console.log("  talk <id>               进入 Actor 专用对话模式");
 	console.log("  status                  查看所有 Agent 状态");
 	console.log("  peek [id]               查看 Agent 详情");
+	console.log(
+		"  rule <type> <action>    沉淀通知规则（如: rule scan.done digest）",
+	);
 	console.log("  exit                    退出");
 	console.log("");
 
@@ -208,6 +215,31 @@ ${e.text}
 				);
 				console.log(ctx);
 			}
+			process.stdout.write("> ");
+			return;
+		}
+
+		if (input.startsWith("rule ")) {
+			// rule <eventType> <action> —— 用户反馈沉淀："这个别告诉我"
+			const parts = input.slice(5).trim().split(/\s+/);
+			const [eventType, action] = parts;
+			const valid = ["show", "digest", "notify", "drop"];
+			if (!eventType || !action || !valid.includes(action)) {
+				console.log(
+					"用法: rule <eventType> <action>  (action: show/digest/notify/drop)",
+				);
+				process.stdout.write("> ");
+				return;
+			}
+			const rule = {
+				match: { eventType },
+				action,
+			} as import("./flow-gate").GateRule;
+			appendNotifyRule(rule);
+			orchestrator.addGateRule(rule);
+			console.log(
+				`规则已生效: ${eventType} → ${action}（已沉淀到 .relay/notify-rules.jsonl）`,
+			);
 			process.stdout.write("> ");
 			return;
 		}

@@ -80,6 +80,11 @@ export class Orchestrator {
 		this.messages = [];
 	}
 
+	/** 运行时添加门控规则（用户反馈"这个别告诉我" → 沉淀 + 生效） */
+	addGateRule(rule: import("./flow-gate").GateRule): void {
+		this.gate.addRule(rule);
+	}
+
 	// ─── 事件驱动循环（daemon 模式）─────────────────────────────
 
 	/**
@@ -219,9 +224,14 @@ export class Orchestrator {
 					break;
 				}
 				case "notify": {
-					// Phase 2 接通知出口（WS/桌面）；当前与 show 同路径
+					// 通知出口：sink notice(notify) → WS/终端广播（server.ts 已订阅）
 					const output = d.result?.output?.slice(0, 500) ?? "无输出";
 					console.log(`\n🔔 [${role}] (${id})\n${output}\n`);
+					this.emit({
+						kind: "notice",
+						level: "notify",
+						text: `[${role}] ${output.slice(0, 200)}`,
+					});
 					await saveDialogue(
 						"system",
 						`[子Agent结果|notify] [${role}] ${output}`,

@@ -32,7 +32,7 @@ export type SinkEvent =
 			tool: string;
 			args: string;
 	  }
-	| { kind: "notice"; level: "info" | "warn"; text: string };
+	| { kind: "notice"; level: "info" | "warn" | "notify"; text: string };
 
 export interface Sink {
 	emit(e: SinkEvent): void;
