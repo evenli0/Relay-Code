@@ -93,7 +93,7 @@ describe("Supervisor", () => {
 			logger: () => {},
 			scheduler,
 		});
-		s.onNodeEvent = (id, msg) => {
+		s.onNodeEvent = (_id, msg) => {
 			if (msg.kind === "event" && msg.type === "schedule.received") {
 				received.push(msg.payload);
 			}
