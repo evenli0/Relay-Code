@@ -156,7 +156,7 @@ export class AgentRegistry {
 	/** 人类/main 直接给 Actor 发消息 */
 	sendToActor(
 		agentId: string,
-		msg: import("./actor").ActorInput,
+		msg: import("./protocol").ServiceCommand,
 	): string | null {
 		const handle = this.getHandle(agentId);
 		if (!handle) return `Actor ${agentId} 不存在或不是 Actor 模式`;

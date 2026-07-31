@@ -1,30 +1,38 @@
 /**
- * actor-handle.ts —— 父进程侧的 Actor 遥控器
+ * actor-handle.ts —— 主进程侧的节点遥控器（ServiceRuntime 载体）
  *
  * 封装：
- *   - spawn Actor 子进程（永不退出的 stdin/stdout JSONL 进程）
- *   - send() 发消息给 Actor
- *   - readLoop() 持续读 stdout，分发到 pending promise 和 onOutput 回调
+ *   - spawn 节点进程（永不退出的 stdin/stdout JSONL 进程，协议见 protocol.ts）
+ *   - send() 发 ServiceCommand
+ *   - readLoop() 持续读 stdout，分发到 pending promise 和 onEvent 回调
  *   - shutdown() 优雅关闭
+ *
+ * 演进说明（framework-design §3）：pending-promise 通道机制保留；
+ * 心跳检测/退避重启归 Supervisor（Step B 接入）。
  */
 
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import type { Subprocess } from "bun";
-import type { ActorInput, ActorOutput } from "./actor";
+import {
+	decodeServiceEvent,
+	encodeServiceCommand,
+	type ServiceCommand,
+	type ServiceEvent,
+} from "./protocol";
 import type { DispatchConfig, SubAgentResult } from "./types";
 
 const TASKS_DIR = ".relay/tasks";
 
 export class ActorHandle {
 	private proc: Subprocess;
-	private pending = new Map<string, (result: ActorOutput) => void>();
+	private pending = new Map<string, (event: ServiceEvent) => void>();
 	public agentId: string;
-	public onOutput?: (msg: ActorOutput) => void;
+	public onEvent?: (msg: ServiceEvent) => void;
 
 	constructor(agentId: string, config: DispatchConfig) {
 		this.agentId = agentId;
 
-		// 写任务文件（复用现有格式，actor.ts 读它初始化）
+		// 写任务文件（actor.ts 读它初始化）
 		if (!existsSync(TASKS_DIR)) {
 			mkdirSync(TASKS_DIR, { recursive: true });
 		}
@@ -35,7 +43,7 @@ export class ActorHandle {
 			"utf-8",
 		);
 
-		// spawn Actor 进程
+		// spawn 节点进程
 		this.proc = Bun.spawn(["bun", "run", "src/actor.ts", taskPath], {
 			stdin: "pipe",
 			stdout: "pipe",
@@ -48,7 +56,6 @@ export class ActorHandle {
 			);
 		});
 
-		// 启动 stdout 读取循环
 		this.readLoop();
 	}
 
@@ -65,37 +72,34 @@ export class ActorHandle {
 				buf = lines.pop() ?? ""; // 最后一段可能不完整，保留
 
 				for (const line of lines) {
-					const trimmed = line.trim();
-					if (!trimmed) continue;
-
-					let msg: ActorOutput;
-					try {
-						msg = JSON.parse(trimmed) as ActorOutput;
-					} catch {
-						process.stderr.write(
-							`[ActorHandle] 无效 JSON: ${trimmed.slice(0, 80)}\n`,
-						);
+					const msg = decodeServiceEvent(line);
+					if (!msg) {
+						if (line.trim()) {
+							process.stderr.write(
+								`[ActorHandle] 无效事件: ${line.slice(0, 80)}\n`,
+							);
+						}
 						continue;
 					}
 
-					// 匹配 pending promise（task_done / task_error / ask_reply）
-					if (msg.kind === "task_done" || msg.kind === "task_error") {
+					// 匹配 pending promise（result / reply）
+					if (msg.kind === "result") {
 						const resolve = this.pending.get(msg.taskId);
 						if (resolve) {
 							resolve(msg);
 							this.pending.delete(msg.taskId);
 						}
 					}
-					if (msg.kind === "ask_reply") {
-						const resolve = this.pending.get(msg.askId);
+					if (msg.kind === "reply") {
+						const resolve = this.pending.get(msg.requestId);
 						if (resolve) {
 							resolve(msg);
-							this.pending.delete(msg.askId);
+							this.pending.delete(msg.requestId);
 						}
 					}
 
-					// 所有消息转发给外部监听者（→ sink → web/cli）
-					this.onOutput?.(msg);
+					// 所有事件转发给外部监听者（→ registry/inbox → sink → web/cli）
+					this.onEvent?.(msg);
 				}
 			}
 		} catch (e) {
@@ -103,15 +107,15 @@ export class ActorHandle {
 		}
 	}
 
-	/** 父→子：写一行 JSON 到 Actor 的 stdin */
-	send(msg: ActorInput): void {
+	/** 主进程→节点：写一行 JSON 指令到 stdin */
+	send(msg: ServiceCommand): void {
 		if (this.proc.killed) {
 			process.stderr.write(`[ActorHandle] 进程已终止，无法发送\n`);
 			return;
 		}
 		try {
 			(this.proc.stdin as unknown as Bun.FileSink).write(
-				`${JSON.stringify(msg)}\n`,
+				`${encodeServiceCommand(msg)}\n`,
 			);
 		} catch (e) {
 			process.stderr.write(`[ActorHandle] stdin 写入失败: ${e}\n`);
@@ -122,35 +126,31 @@ export class ActorHandle {
 	async dispatch(config: DispatchConfig): Promise<SubAgentResult> {
 		const taskId = `task-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
 
-		const promise = new Promise<ActorOutput>((resolve) => {
+		const promise = new Promise<ServiceEvent>((resolve) => {
 			this.pending.set(taskId, resolve);
 		});
 
 		this.send({ kind: "task", taskId, content: config.prompt.task });
 
-		const result = await promise;
-		if (result.kind === "task_done") {
-			return { status: "completed", output: result.output };
+		const event = await promise;
+		if (event.kind === "result") {
+			return { status: event.status, output: event.output };
 		}
-		return {
-			status: "error",
-			output:
-				(result as { kind: "task_error"; error: string }).error || "未知错误",
-		};
+		return { status: "error", output: "未收到 result 事件" };
 	}
 
-	/** 人类/main 直接问 Actor 一个问题 */
+	/** 人类/main 直接问节点一个问题 */
 	async ask(content: string, from: "human" | "main" = "main"): Promise<string> {
-		const askId = `ask-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+		const requestId = `ask-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
 
-		const promise = new Promise<ActorOutput>((resolve) => {
-			this.pending.set(askId, resolve);
+		const promise = new Promise<ServiceEvent>((resolve) => {
+			this.pending.set(requestId, resolve);
 		});
 
-		this.send({ kind: "ask", askId, from, content });
+		this.send({ kind: "ask", requestId, content, from });
 
-		const result = await promise;
-		return result.kind === "ask_reply" ? result.content : "";
+		const event = await promise;
+		return event.kind === "reply" ? event.content : "";
 	}
 
 	/** 运行时更换工具集 */
@@ -160,7 +160,7 @@ export class ActorHandle {
 
 	/** 优雅关闭 */
 	shutdown(): void {
-		this.send({ kind: "shutdown" });
+		this.send({ kind: "shutdown", reason: "handle-shutdown" });
 		// 5 秒后强制 kill
 		setTimeout(() => {
 			if (!this.proc.killed) {

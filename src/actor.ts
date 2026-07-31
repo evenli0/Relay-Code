@@ -1,56 +1,24 @@
 /**
- * actor.ts —— Actor 进程入口
+ * actor.ts —— 节点进程入口（ServiceEvent/ServiceCommand 协议）
  *
- * 永不退出的子 Agent 进程。从 stdin 读 JSONL 指令，stdout 写 JSONL 结果。
+ * 常驻子 Agent 进程。从 stdin 读 JSONL 指令（ServiceCommand），stdout 写 JSONL 事件（ServiceEvent）。
+ * 协议见 protocol.ts（framework-design §1）。
  *
  * 用法: bun run src/actor.ts <.relay/tasks/agent-xxx.json>
  *
- * 协议（父→子，stdin，每行一个 JSON）：
- *   { kind: "task";      taskId: string; content: string }
- *   { kind: "ask";       askId: string; from: "human"|"main"; content: string }
- *   { kind: "configure"; tools?: string[]; systemPrompt?: string }
- *   { kind: "context";   context: Record<string, unknown> }
- *   { kind: "shutdown" }
- *
- * 协议（子→父，stdout，每行一个 JSON）：
- *   { kind: "ready" }
- *   { kind: "progress";  round: number; action: string; summary: string }
- *   { kind: "task_done"; taskId: string; output: string; status: "completed"|"error" }
- *   { kind: "task_error"; taskId: string; error: string }
- *   { kind: "ask_reply"; askId: string; content: string }
- *   { kind: "configured" }
+ * 通道分离（framework-design §10.2 热更新三通道的基础）：
+ *   - conversation：ask 专用，持续，保留对话历史
+ *   - task 上下文：一次性，跑完不残留，不污染交互记忆
  */
 
 import { existsSync, readFileSync } from "node:fs";
 import { SubAgent } from "./dispatcher";
 import { callLLM } from "./llm";
 import { assembleMessages } from "./message-assembler";
+import { decodeServiceCommand, encodeServiceEvent } from "./protocol";
 import { ToolExecutor } from "./tool-executor";
 import type { ChatMessage, DispatchConfig } from "./types";
 import { MAX_REACT_ITERATIONS } from "./types";
-
-// ─── 协议类型 ───────────────────────────────────────
-
-export type ActorInput =
-	| { kind: "task"; taskId: string; content: string }
-	| { kind: "ask"; askId: string; from: "human" | "main"; content: string }
-	| { kind: "configure"; tools?: string[]; systemPrompt?: string }
-	| { kind: "context"; context: Record<string, unknown> }
-	| { kind: "shutdown" };
-
-export type ActorOutput =
-	| { kind: "ready" }
-	| { kind: "progress"; round: number; action: string; summary: string }
-	| {
-			kind: "task_done";
-			taskId: string;
-			output: string;
-			status: "completed" | "error";
-	  }
-	| { kind: "task_error"; taskId: string; error: string }
-	| { kind: "ask_reply"; askId: string; content: string }
-	| { kind: "configured" }
-	| { kind: "interaction_summary"; from: string; question: string; at: number };
 
 // ─── 入口 ───────────────────────────────────────────
 
@@ -68,16 +36,14 @@ const initialConfig: DispatchConfig = JSON.parse(
 	readFileSync(taskPath, "utf-8"),
 );
 
-// ─── Actor 状态（进程存活期间一直保留）─────────────
+// ─── 节点状态（进程存活期间一直保留）──────────────────
 const executor = new ToolExecutor();
-const state: {
-	messages: ChatMessage[];
-	tools: string[];
-	context: Record<string, unknown>;
-} = {
-	messages: (await assembleMessages(initialConfig)).map((m) => {
+
+// 基础消息（系统提示 + 启动时注入的用户上下文）
+const baseMessages: ChatMessage[] = (await assembleMessages(initialConfig)).map(
+	(m) => {
 		if (m.role !== "system") return m;
-		// 去掉 JSON 汇报格式指令——Actor 对话不需要
+		// 去掉 JSON 汇报格式指令——节点对话不需要
 		return {
 			...m,
 			content: m.content
@@ -85,13 +51,26 @@ const state: {
 				.replace(/\n?汇报格式.*?JSON schema。?/g, "")
 				.trim(),
 		};
-	}),
-	tools: initialConfig.allowed_tools ?? ["read", "write", "grep", "bash"],
-	context: {},
-};
+	},
+);
+let systemPrompt = baseMessages.find((m) => m.role === "system")?.content ?? "";
+
+// 通道分离：交互上下文（ask，持续）与任务上下文（task，一次性）不互相污染
+const conversation: ChatMessage[] = baseMessages.filter(
+	(m) => m.role !== "system",
+);
+let tools: string[] = initialConfig.allowed_tools ?? [
+	"read",
+	"write",
+	"grep",
+	"bash",
+];
+let context: Record<string, unknown> = {};
 
 // 通知父进程已就绪
-process.stdout.write(`${JSON.stringify({ kind: "ready" })}\n`);
+process.stdout.write(
+	`${encodeServiceEvent({ kind: "ready", ts: Date.now() })}\n`,
+);
 
 // ─── 事件循环：从 stdin 读 JSONL，永不退出 ─────────
 const decoder = new TextDecoder();
@@ -103,101 +82,121 @@ for await (const chunk of process.stdin) {
 	stdinBuf = lines.pop() ?? ""; // 最后一段可能不完整
 
 	for (const line of lines) {
-		const trimmed = line.trim();
-		if (!trimmed) continue;
-
-		let msg: ActorInput;
-		try {
-			msg = JSON.parse(trimmed) as ActorInput;
-		} catch {
-			process.stderr.write(`[actor] 无效 JSON: ${trimmed.slice(0, 80)}\n`);
+		const msg = decodeServiceCommand(line);
+		if (!msg) {
+			if (line.trim()) {
+				process.stderr.write(`[actor] 无效指令: ${line.slice(0, 80)}\n`);
+			}
 			continue;
 		}
 
 		switch (msg.kind) {
 			case "task": {
-				const taskMessages = [...state.messages];
-				taskMessages.push({ role: "user", content: msg.content });
+				// 一次性任务上下文：系统提示 + 任务内容，不携带交互历史
+				const taskMessages: ChatMessage[] = [
+					{ role: "system", content: systemPrompt },
+					{ role: "user", content: msg.content },
+				];
 
 				const agent = new SubAgent(
 					taskMessages,
-					state.tools,
+					tools,
 					executor,
 					undefined,
 					initialConfig.max_rounds ?? MAX_REACT_ITERATIONS,
 					initialConfig.max_time_ms,
 					(round, _total, action, summary) => {
-						// 进度通知 → 父进程
+						// 进度通知 → 主进程
 						process.stdout.write(
-							`${JSON.stringify({ kind: "progress", round, action, summary })}\n`,
+							`${encodeServiceEvent({ kind: "progress", round, action, summary })}\n`,
 						);
 					},
 				);
 
 				const result = await agent.run();
-				if (result.status === "completed") {
-					process.stdout.write(
-						`${JSON.stringify({ kind: "task_done", taskId: msg.taskId, output: result.output, status: "completed" })}\n`,
-					);
-				} else {
-					process.stdout.write(
-						`${JSON.stringify({ kind: "task_error", taskId: msg.taskId, error: result.output })}\n`,
-					);
-				}
+				process.stdout.write(
+					`${encodeServiceEvent({
+						kind: "result",
+						taskId: msg.taskId,
+						status: result.status,
+						output: result.output,
+					})}\n`,
+				);
 				break;
 			}
 
 			case "ask": {
-				// 多轮对话：直接追加到 state.messages，LLM 会记住之前的对话
-				state.messages.push({ role: "user", content: msg.content });
+				// 多轮对话：只进 conversation 通道，LLM 记住之前的对话
+				conversation.push({ role: "user", content: msg.content });
 				let reply = "";
 				try {
-					const response = await callLLM(state.messages, []);
+					const response = await callLLM(conversation, []);
 					reply = response.content ?? "";
-					process.stdout.write(
-						`${JSON.stringify({ kind: "ask_reply", askId: msg.askId, content: reply })}
-`,
-					);
 				} catch (e) {
 					reply = `错误: ${e}`;
-					process.stdout.write(
-						`${JSON.stringify({ kind: "ask_reply", askId: msg.askId, content: reply })}
-`,
-					);
 				}
-				// 写入 state.messages，后续 ask/talk 会记住这段对话
-				state.messages.push({ role: "assistant", content: reply });
-				// 交互摘要 → Registry → 主 Agent 决策时可见
+				// 写入 conversation，后续 ask 会记住这段对话
+				conversation.push({ role: "assistant", content: reply });
 				process.stdout.write(
-					`${JSON.stringify({ kind: "interaction_summary", from: msg.from, question: msg.content.slice(0, 80), at: Date.now() })}
-`,
+					`${encodeServiceEvent({
+						kind: "reply",
+						requestId: msg.requestId,
+						content: reply,
+					})}\n`,
+				);
+				// 交互摘要（事件通道）→ 主进程 → 主 Agent 决策时可见
+				process.stdout.write(
+					`${encodeServiceEvent({
+						kind: "event",
+						type: "interaction.summary",
+						level: "info",
+						payload: {
+							from: msg.from ?? "main",
+							question: msg.content.slice(0, 80),
+							at: Date.now(),
+						},
+						ts: Date.now(),
+					})}\n`,
 				);
 				break;
 			}
 
 			case "configure": {
-				if (msg.tools) state.tools = msg.tools;
+				if (msg.tools) tools = msg.tools;
 				if (msg.systemPrompt) {
-					// 替换或追加 system prompt
-					const sysIdx = state.messages.findIndex((m) => m.role === "system");
-					if (sysIdx >= 0) {
-						state.messages[sysIdx] = {
-							role: "system",
-							content: msg.systemPrompt,
-						};
-					} else {
-						state.messages.unshift({
-							role: "system",
-							content: msg.systemPrompt,
-						});
-					}
+					// 系统提示词热更新（版本化回滚在 Step B 实现）
+					systemPrompt = msg.systemPrompt;
 				}
-				process.stdout.write(`${JSON.stringify({ kind: "configured" })}\n`);
+				process.stdout.write(
+					`${encodeServiceEvent({
+						kind: "event",
+						type: "configure.ack",
+						level: "info",
+						payload: {
+							version: msg.version ?? null,
+							hasSystemPrompt: Boolean(msg.systemPrompt),
+						},
+						ts: Date.now(),
+					})}\n`,
+				);
 				break;
 			}
 
-			case "context": {
-				state.context = { ...state.context, ...msg.context };
+			case "event": {
+				if (msg.type === "context.update" && isRecord(msg.payload)) {
+					context = { ...context, ...msg.payload };
+				} else {
+					process.stderr.write(
+						`[actor] 事件（暂只处理 context.update）: ${msg.type}\n`,
+					);
+				}
+				break;
+			}
+
+			case "schedule": {
+				process.stderr.write(
+					`[actor] schedule 指令收到（Step B 实现节奏执行）: ${JSON.stringify(msg.spec)}\n`,
+				);
 				break;
 			}
 
@@ -205,12 +204,10 @@ for await (const chunk of process.stdin) {
 				process.exit(0);
 				break;
 			}
-
-			default: {
-				process.stderr.write(
-					`[actor] 未知消息类型: ${(msg as { kind: string }).kind}\n`,
-				);
-			}
 		}
 	}
+}
+
+function isRecord(v: unknown): v is Record<string, unknown> {
+	return typeof v === "object" && v !== null;
 }

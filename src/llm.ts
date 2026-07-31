@@ -17,12 +17,30 @@ interface DeepSeekMessage {
 const DEEPSEEK_BASE_URL = "https://api.deepseek.com";
 const DEFAULT_MODEL = "deepseek-v4-flash";
 
+export interface LLMTransport {
+	complete(
+		messages: ChatMessage[],
+		tools?: ToolDefinition[],
+		options?: { signal?: AbortSignal; maxTokens?: number },
+	): Promise<LLMResponse>;
+}
+
+let mockTransport: LLMTransport | null = null;
+
+/** 测试专用：注入假 LLM。CI 不依赖真实 API（Phase1 E-1） */
+export function setMockTransport(t: LLMTransport | null): void {
+	mockTransport = t;
+}
+
 /** 一次 LLM 调用，支持 tool calling */
 export async function callLLM(
 	messages: ChatMessage[],
 	tools?: ToolDefinition[],
 	options?: { signal?: AbortSignal; maxTokens?: number },
 ): Promise<LLMResponse> {
+	// mock 优先：测试环境不触网
+	if (mockTransport) return mockTransport.complete(messages, tools, options);
+
 	const apiKey = process.env.DEEPSEEK_API_KEY;
 	if (!apiKey) throw new Error("DEEPSEEK_API_KEY 环境变量未设置");
 

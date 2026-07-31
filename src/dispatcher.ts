@@ -110,7 +110,8 @@ export async function dispatchAsync(
 		// Actor 已从 config 加载 system prompt + user message
 		// 不自动跑 ReAct — 进入 talk 后直接对话
 
-		handle.onOutput = (msg) => {
+		// 协议事件 → registry/inbox（sink 展示由 UI 适配层映射，见 server.ts）
+		handle.onEvent = (msg) => {
 			if (msg.kind === "progress") {
 				registry.updateProgress(agentId, msg.round, msg.action, msg.summary);
 				if (sink)
@@ -121,37 +122,53 @@ export async function dispatchAsync(
 						action: msg.action,
 					});
 			}
-			if (msg.kind === "task_done") {
-				registry.markDone(agentId, msg.output.slice(0, 200));
-				if (sink)
-					sink.emit({ kind: "agent_done", agentId, role, output: msg.output });
-				inbox.push({
-					type: "agent_done",
-					threadId,
-					timestamp: Date.now(),
-					result: { status: "completed", output: msg.output },
-					agentRole: role,
-					agentId,
-				});
+			if (msg.kind === "result") {
+				if (msg.status === "completed") {
+					registry.markDone(agentId, msg.output.slice(0, 200));
+					if (sink)
+						sink.emit({
+							kind: "agent_done",
+							agentId,
+							role,
+							output: msg.output,
+						});
+					inbox.push({
+						type: "agent_done",
+						threadId,
+						timestamp: Date.now(),
+						result: { status: "completed", output: msg.output },
+						agentRole: role,
+						agentId,
+					});
+				} else {
+					registry.markError(agentId, msg.output);
+					if (sink)
+						sink.emit({
+							kind: "agent_error",
+							agentId,
+							role,
+							error: msg.output,
+						});
+					inbox.push({
+						type: "agent_error",
+						threadId,
+						timestamp: Date.now(),
+						error: msg.output,
+						agentRole: role,
+						agentId,
+					});
+				}
 			}
-			if (msg.kind === "task_error") {
-				registry.markError(agentId, msg.error);
-				if (sink)
-					sink.emit({ kind: "agent_error", agentId, role, error: msg.error });
-				inbox.push({
-					type: "agent_error",
-					threadId,
-					timestamp: Date.now(),
-					error: msg.error,
-					agentRole: role,
-					agentId,
-				});
-			}
-			if (msg.kind === "interaction_summary") {
+			if (msg.kind === "event" && msg.type === "interaction.summary") {
+				const payload = msg.payload as {
+					from: string;
+					question: string;
+					at: number;
+				};
 				registry.recordInteraction(agentId, {
-					from: msg.from,
-					question: msg.question,
-					at: msg.at,
+					from: payload.from,
+					question: payload.question,
+					at: payload.at,
 				});
 			}
 		};
