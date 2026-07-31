@@ -143,6 +143,41 @@ describe("Orchestrator 纯代码调度（LLM 卸任）", () => {
 		expect(notices[0]).toContain("opportunity.found");
 	});
 
+	test("门控命中记录（建造者控制台）", async () => {
+		const inbox = new Inbox();
+		const registry = new AgentRegistry();
+		const orch = new Orchestrator(inbox, registry, "t");
+
+		// 服务事件：silent → digest
+		orch.handleServiceEvent("demo-watcher", {
+			kind: "event",
+			type: "scan.done",
+			level: "silent",
+			payload: {},
+			ts: 1,
+		});
+		// 服务事件：notify → notify
+		orch.handleServiceEvent("demo-watcher", {
+			kind: "event",
+			type: "opportunity.found",
+			level: "notify",
+			payload: {},
+			ts: 2,
+		});
+
+		const hits = orch.getGateHits();
+		expect(hits.length).toBe(2);
+		expect(hits[0]).toMatchObject({
+			role: "demo-watcher",
+			eventType: "scan.done",
+			action: "digest",
+		});
+		expect(hits[1]).toMatchObject({
+			eventType: "opportunity.found",
+			action: "notify",
+		});
+	});
+
 	test("服务事件规则可覆盖：用户 rule 让 notify 降级为 digest", async () => {
 		const inbox = new Inbox();
 		const registry = new AgentRegistry();

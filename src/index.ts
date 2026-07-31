@@ -156,9 +156,13 @@ ${e.text}
 	multiSink.add(createWsSink());
 	orchestrator.setSink(multiSink);
 
-	// 启动 Web Dashboard
+	// 启动 Web Dashboard（建造者控制台：服务集群 + 门控命中）
 	const { startServer } = await import("./server");
-	startServer(3000, registry, inbox, multiSink);
+	startServer(3000, registry, inbox, multiSink, {
+		stateStore,
+		supervisor,
+		orchestrator,
+	});
 
 	console.log(
 		`Relay Code v${VERSION} — daemon mode — Dashboard: http://localhost:3000.\n`,

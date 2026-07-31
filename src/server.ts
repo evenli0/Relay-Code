@@ -10,7 +10,10 @@
  */
 import type { AgentRegistry } from "./agent-registry";
 import type { Inbox } from "./inbox";
+import type { Orchestrator } from "./orchestrator";
 import type { Sink, SinkEvent } from "./sink";
+import type { StateStore } from "./state-store";
+import type { Supervisor } from "./supervisor";
 
 const _events: string[] = [];
 const _wsClientsAny = new Set<{ send(data: string): void }>();
@@ -132,11 +135,19 @@ export function broadcastState(registry: AgentRegistry): void {
 	}
 }
 
+/** 建造者控制台扩展数据源（Phase5-C：服务集群 + 门控命中） */
+export interface ConsoleExtras {
+	stateStore?: StateStore;
+	supervisor?: Supervisor;
+	orchestrator?: Orchestrator;
+}
+
 export function startServer(
 	port: number,
 	registry: AgentRegistry,
 	inbox: Inbox,
 	sink: import("./sink").Sink,
+	extras: ConsoleExtras = {},
 ): void {
 	let prevSnapshot = "";
 	setInterval(() => {
@@ -202,6 +213,18 @@ export function startServer(
 						running: agents.filter((a) => a.status === "running").length,
 						done: agents.filter((a) => a.status === "done").length,
 						errors: agents.filter((a) => a.status === "error").length,
+					}),
+					{ headers: { "Content-Type": "application/json" } },
+				);
+			}
+
+			if (url.pathname === "/api/services") {
+				// 建造者控制台：服务集群健康 + 状态模型 + 门控命中
+				return new Response(
+					JSON.stringify({
+						services: extras.supervisor?.getClusterStatus() ?? [],
+						state: extras.stateStore?.getL1Summary() ?? "",
+						gateHits: extras.orchestrator?.getGateHits() ?? [],
 					}),
 					{ headers: { "Content-Type": "application/json" } },
 				);

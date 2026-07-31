@@ -36,6 +36,15 @@ import { MAX_REACT_ITERATIONS } from "./types";
  *   - User 指令优先，单独一轮处理
  *   - 子 Agent 结果合并一轮处理
  */
+/** 门控命中记录（建造者控制台：为何 notify / 为何 digest，framework-design §11） */
+export interface GateHit {
+	ts: number;
+	role: string;
+	eventType: string;
+	level: string;
+	action: string;
+}
+
 export class Orchestrator {
 	private harness: Harness;
 	private messages: ChatMessage[] = [];
@@ -47,6 +56,7 @@ export class Orchestrator {
 	private digestQueue: AgentEvent[] = [];
 	private stateStore?: StateStore;
 	private correlator?: Correlator;
+	private gateHits: GateHit[] = [];
 	private lastStateSummary = "";
 	private lastCorrelationSummary = "";
 
@@ -92,6 +102,27 @@ export class Orchestrator {
 	/** 运行时添加门控规则（用户反馈"这个别告诉我" → 沉淀 + 生效） */
 	addGateRule(rule: import("./flow-gate").GateRule): void {
 		this.gate.addRule(rule);
+	}
+
+	/** 门控命中记录（建造者控制台，framework-design §11） */
+	getGateHits(): GateHit[] {
+		return [...this.gateHits];
+	}
+
+	private recordGateHit(
+		role: string,
+		eventType: string,
+		level: string | undefined,
+		action: string,
+	): void {
+		this.gateHits.push({
+			ts: Date.now(),
+			role,
+			eventType,
+			level: level ?? "",
+			action,
+		});
+		if (this.gateHits.length > 100) this.gateHits.shift();
 	}
 
 	// ─── 事件驱动循环（daemon 模式）─────────────────────────────
@@ -223,6 +254,7 @@ export class Orchestrator {
 			const action = this.gate.decide(d);
 			const role = d.agentRole ?? "未知";
 			const id = d.agentId?.slice(-8) ?? "";
+			this.recordGateHit(role, d.eventType ?? d.type, d.level, action);
 
 			switch (action) {
 				case "show": {
@@ -327,6 +359,7 @@ export class Orchestrator {
 		}
 
 		const payload = formatPayload(event.payload);
+		this.recordGateHit(serviceId, event.type, event.level, action);
 		switch (action) {
 			case "show":
 				console.log(`\n### [${serviceId}] ${event.type}\n${payload}\n`);

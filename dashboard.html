@@ -189,6 +189,12 @@
 <div class="section-title">📋 Agent 看板</div>
 <div class="grid" id="grid"><div class="empty">等待第一个子 Agent...</div></div>
 
+<div class="section-title">🛰 服务集群</div>
+<div class="events" id="services"><div class="event">等待服务...</div></div>
+
+<div class="section-title">🎯 门控命中</div>
+<div class="events" id="gate-hits"><div class="event">等待事件...</div></div>
+
 <div class="section-title">💬 对话</div>
 <div class="conversation" id="conversation"><div class="msg">等待指令...</div></div>
 
@@ -296,6 +302,48 @@ function sendCmd() {
   }
 }
 
+function esc(s) {
+  return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+function renderServices(data) {
+  const el = document.getElementById("services");
+  let html = "";
+  if (data.state) {
+    html += '<div class="event"><strong>状态模型</strong><br>' + esc(data.state).replace(/\n/g, "<br>") + "</div>";
+  }
+  if (data.services && data.services.length > 0) {
+    for (const s of data.services) {
+      const icon = s.status === "running" ? "🔄" : s.status === "error" ? "❌" : "⏹";
+      html += '<div class="event">' + icon + " " + esc(s.id) + ": " + esc(s.status) +
+        " (uptime " + Math.round(s.uptimeMs / 1000) + "s, 重启 " + s.restartCount + " 次)</div>";
+    }
+  }
+  el.innerHTML = html || '<div class="event">无常驻服务</div>';
+}
+
+function renderGateHits(data) {
+  const el = document.getElementById("gate-hits");
+  const hits = data.gateHits || [];
+  if (hits.length === 0) {
+    el.innerHTML = '<div class="event">暂无门控决策</div>';
+    return;
+  }
+  el.innerHTML = hits.slice(-20).reverse().map(function (h) {
+    const t = new Date(h.ts).toLocaleTimeString("zh-CN", { hour12: false });
+    return '<div class="event">[' + t + "] " + esc(h.action) + " ← " + esc(h.role) + "." + esc(h.eventType) +
+      " (" + esc(h.level) + ")</div>";
+  }).join("");
+}
+
+function pollServices() {
+  fetch("/api/services").then(function (r) { return r.json(); }).then(function (d) {
+    renderServices(d);
+    renderGateHits(d);
+  }).catch(function () { /* 服务未启动时静默 */ });
+  setTimeout(pollServices, 2000);
+}
+
 function toggleEvents() {
   const el = document.getElementById("events");
   const title = el.previousElementSibling;
@@ -314,6 +362,7 @@ document.getElementById("cmd").addEventListener("keydown", (e) => {
 
 // initial load
 fetch("/api/state").then(r => r.json()).then(render);
+pollServices();
 fetch("/api/events").then(r => r.json()).then(events => {
   events.forEach(addEvent);
 });
