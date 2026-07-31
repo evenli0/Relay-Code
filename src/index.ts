@@ -168,6 +168,9 @@ ${e.text}
 	console.log(
 		"  rule <type> <action>    沉淀通知规则（如: rule scan.done digest）",
 	);
+	console.log(
+		"  reload                  热加载 services/ 目录（启动新增/停止移除）",
+	);
 	console.log("  exit                    退出");
 	console.log("");
 
@@ -255,6 +258,16 @@ ${e.text}
 			orchestrator.addGateRule(rule);
 			console.log(
 				`规则已生效: ${eventType} → ${action}（已沉淀到 .relay/notify-rules.jsonl）`,
+			);
+			process.stdout.write("> ");
+			return;
+		}
+
+		if (input === "reload") {
+			// 热加载：对比 services/ 目录，启动新增/停止移除
+			const r = supervisor.sync();
+			console.log(
+				`[reload] 启动 ${r.started.length} 个: ${r.started.join(", ") || "无"}；停止 ${r.stopped.length} 个: ${r.stopped.join(", ") || "无"}${r.errors.length > 0 ? `；错误: ${r.errors.join("; ")}` : ""}`,
 			);
 			process.stdout.write("> ");
 			return;

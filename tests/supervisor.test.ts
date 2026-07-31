@@ -82,6 +82,56 @@ describe("Supervisor", () => {
 		s.stopAll();
 	});
 
+	test("sync 热加载：新增启动、移除停止", async () => {
+		const s = makeSupervisor();
+		const dir = ".relay/test-services";
+		const { mkdirSync, rmSync, writeFileSync } = await import("node:fs");
+		try {
+			rmSync(dir, { recursive: true, force: true });
+		} catch {
+			/* ignore */
+		}
+		mkdirSync(`${dir}/sync-svc`, { recursive: true });
+		writeFileSync(
+			`${dir}/sync-svc/service.json`,
+			JSON.stringify(
+				{
+					id: "sync-svc",
+					version: "1.0.0",
+					name: "sync",
+					description: "sync 测试",
+					archetype: "watcher",
+					execution: "watch",
+					entry: "tests/fixtures/fake-service.ts",
+					tools: [],
+					capabilities: [],
+					emits: [],
+					consumes: [],
+					permissions: {},
+				},
+				null,
+				2,
+			),
+			"utf-8",
+		);
+
+		// 新增 → 启动
+		const r1 = s.sync(dir);
+		expect(r1.started).toContain("sync-svc");
+		expect(s.getStatus("sync-svc")?.status).toBe("running");
+
+		// 移除 → 停止
+		try {
+			rmSync(`${dir}/sync-svc`, { recursive: true, force: true });
+		} catch {
+			/* ignore */
+		}
+		const r2 = s.sync(dir);
+		expect(r2.stopped).toContain("sync-svc");
+		expect(s.getStatus("sync-svc")?.status).toBe("stopped");
+		s.stopAll();
+	});
+
 	test("契约 schedule → Scheduler 到点向节点发 schedule 指令", async () => {
 		const received: unknown[] = [];
 		const scheduler = new Scheduler({ tickMs: 50, logger: () => {} });

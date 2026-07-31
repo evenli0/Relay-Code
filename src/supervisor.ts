@@ -195,6 +195,54 @@ export class Supervisor {
 		};
 	}
 
+	/**
+	 * 热加载（framework-design §2）：对比目录与当前节点，
+	 * 启动新增、停止移除——服务包"放进去 sync 即生效"。
+	 */
+	sync(dir = "services"): {
+		started: string[];
+		stopped: string[];
+		errors: string[];
+	} {
+		const dirContracts = new Map<string, ServiceContract>();
+		if (existsSync(dir)) {
+			for (const entry of readdirSync(dir, { withFileTypes: true })) {
+				if (!entry.isDirectory()) continue;
+				const path = `${dir}/${entry.name}/service.json`;
+				if (!existsSync(path)) continue;
+				try {
+					const v = validateContract(
+						JSON.parse(readFileSync(path, "utf-8")) as unknown,
+					);
+					if (v.ok) dirContracts.set(v.contract.id, v.contract);
+				} catch {
+					this.logger(`服务 ${entry.name} 契约解析失败，跳过`);
+				}
+			}
+		}
+
+		const started: string[] = [];
+		const stopped: string[] = [];
+		const errors: string[] = [];
+		for (const [id, contract] of dirContracts) {
+			if (!this.nodes.has(id)) {
+				try {
+					this.start(contract);
+					started.push(id);
+				} catch (e) {
+					errors.push(`${id}: ${e}`);
+				}
+			}
+		}
+		for (const id of [...this.nodes.keys()]) {
+			if (!dirContracts.has(id)) {
+				this.stop(id, "sync-removed");
+				stopped.push(id);
+			}
+		}
+		return { started, stopped, errors };
+	}
+
 	/** 启动恢复：扫描 services/ 目录，按契约批量拉起 */
 	restore(): string[] {
 		if (!existsSync("services")) return [];

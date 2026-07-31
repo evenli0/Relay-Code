@@ -24,3 +24,27 @@ setInterval(() => {
 		`${JSON.stringify({ kind: "heartbeat", ts: Date.now() })}\n`,
 	);
 }, 30_000);
+
+// schedule 指令：Scheduler 到点下发（时间轴推进演示，framework-design §7）
+process.stdin.on("data", (chunk) => {
+	for (const line of chunk.toString().split("\n")) {
+		const t = line.trim();
+		if (!t) continue;
+		try {
+			const cmd = JSON.parse(t) as { kind?: string; spec?: unknown };
+			if (cmd.kind === "schedule") {
+				process.stdout.write(
+					`${JSON.stringify({
+						kind: "event",
+						type: "schedule.tick",
+						level: "info",
+						payload: { spec: cmd.spec },
+						ts: Date.now(),
+					})}\n`,
+				);
+			}
+		} catch {
+			/* ignore */
+		}
+	}
+});
