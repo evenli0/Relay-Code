@@ -88,7 +88,16 @@ async function chatMode(): Promise<void> {
 async function daemonMode(): Promise<void> {
 	const inbox = new Inbox();
 	const registry = new AgentRegistry();
-	const orchestrator = new Orchestrator(inbox, registry);
+	const { StateStore } = await import("./state-store");
+	const stateStore = new StateStore();
+	stateStore.restore(); // 节点重启 ≠ 状态丢失
+	const orchestrator = new Orchestrator(
+		inbox,
+		registry,
+		undefined,
+		undefined,
+		stateStore,
+	);
 
 	// Sink 事件总线
 	const { MultiSink } = await import("./sink");

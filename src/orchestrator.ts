@@ -16,6 +16,7 @@ import { callLLM } from "./llm";
 import { saveDialogue } from "./memory";
 import { buildSystemPrompt } from "./prompts";
 import type { Sink } from "./sink";
+import type { StateStore } from "./state-store";
 import { ALL_TOOLS } from "./tools";
 import type { AgentEvent, ChatMessage, LLMResponse } from "./types";
 import { MAX_REACT_ITERATIONS } from "./types";
@@ -41,6 +42,8 @@ export class Orchestrator {
 	private sink: Sink | null = null;
 	private gate: FlowGate;
 	private digestQueue: AgentEvent[] = [];
+	private stateStore?: StateStore;
+	private lastStateSummary = "";
 
 	setSink(s: Sink): void {
 		this.sink = s;
@@ -56,10 +59,12 @@ export class Orchestrator {
 		registry?: AgentRegistry,
 		threadId?: string,
 		gate?: FlowGate,
+		stateStore?: StateStore,
 	) {
 		this.inbox = inbox ?? new Inbox();
 		this.registry = registry ?? new AgentRegistry();
 		this.gate = gate ?? new FlowGate();
+		this.stateStore = stateStore;
 		this.currentThreadId = threadId ?? `thread-${Date.now().toString(36)}`;
 		// 仅在显式传入时启用异步模式（daemon 模式），否则兼容同步 dispatch
 		if (inbox && registry) {
@@ -67,6 +72,7 @@ export class Orchestrator {
 		} else {
 			this.harness = new Harness();
 		}
+		if (stateStore) this.harness.setStateStore(stateStore);
 	}
 
 	/** 重置对话历史（chat 模式 "/clear" 命令调用） */
@@ -154,6 +160,9 @@ export class Orchestrator {
 		// 用户开口前先吐出静默归档的摘要
 		this.flushDigest();
 
+		// 服务状态摘要（L1，变化去重注入——"知晓"的推送侧）
+		this.injectStateSummary();
+
 		const snapshot = this.registry.getSnapshot();
 
 		// 首轮初始化 system prompt
@@ -237,6 +246,19 @@ export class Orchestrator {
 		console.log(
 			`📊 集群: ${dones.length} 个完成，${running} 个运行中，共 ${total} 个`,
 		);
+	}
+
+	/** 服务状态注入：StateStore L1 摘要，变化才注入（防上下文膨胀） */
+	private injectStateSummary(): void {
+		if (!this.stateStore) return;
+		const summary = this.stateStore.getL1Summary();
+		if (summary && summary !== this.lastStateSummary) {
+			this.lastStateSummary = summary;
+			this.messages.push({
+				role: "system",
+				content: `[服务状态]\n${summary}\n[你可以据此回答用户关于服务状态的问题]`,
+			});
+		}
 	}
 
 	/** 静默归档摘要：把 digest 队列合成一行输出（不占 LLM 上下文） */

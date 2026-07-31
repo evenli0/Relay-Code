@@ -3,6 +3,7 @@ import type { AgentRegistry } from "./agent-registry";
 import { dispatchAsync } from "./dispatcher";
 import type { Inbox } from "./inbox";
 import type { ServicePermissions } from "./service-contract";
+import type { StateStore } from "./state-store";
 import { ALL_TOOLS, resolveShell } from "./tools";
 import type { DispatchConfig, SubAgentResult } from "./types";
 
@@ -22,6 +23,8 @@ export class ToolExecutor {
 	sink?: import("./sink").Sink;
 	/** 服务契约权限（framework-design §9）；null = 旧模式不限制 */
 	private contractPermissions: ServicePermissions | null = null;
+	/** 全局状态模型（query_state 工具的数据源，framework-design §5） */
+	stateStore?: StateStore;
 
 	/** 注入服务契约权限（Supervisor/actor 启动时） */
 	setPermissions(p: ServicePermissions | null): void {
@@ -36,6 +39,14 @@ export class ToolExecutor {
 		// 权限 enforcement：契约声明之外的一律拒绝（framework-design §9）
 		const denied = this.enforce(toolName, args);
 		if (denied) return denied;
+
+		// query_state：主 agent 的"知晓"（拉取式状态查询）
+		if (toolName === "query_state") {
+			if (!this.stateStore) return "query_state 不可用：StateStore 未接入";
+			const serviceId =
+				typeof args.serviceId === "string" ? args.serviceId : undefined;
+			return JSON.stringify(this.stateStore.queryState(serviceId), null, 2);
+		}
 
 		// dispatch 工具
 		if (toolName === "dispatch") {

@@ -4,6 +4,7 @@ import type { Inbox } from "./inbox";
 import { assembleMessages } from "./message-assembler";
 import { PlanManager } from "./plan-manager";
 import type { Sink } from "./sink";
+import type { StateStore } from "./state-store";
 import { ToolExecutor } from "./tool-executor";
 import type { ChatMessage, DispatchConfig, SubAgentResult } from "./types";
 
@@ -37,6 +38,11 @@ export class Harness {
 	/** 注入 Sink，传递到 ToolExecutor → dispatchAsync */
 	setSink(sink: Sink): void {
 		this.executor.sink = sink;
+	}
+
+	/** 接入全局状态模型（query_state 工具的数据源） */
+	setStateStore(store: StateStore): void {
+		this.executor.stateStore = store;
 	}
 
 	/** 更新 threadId（每次新对话时） */

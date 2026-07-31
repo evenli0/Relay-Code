@@ -224,6 +224,25 @@ const dispatchTool: ToolDefinition = {
 	},
 };
 
+/** query_state 工具的 schema（供编排Agent LLM 识别；执行由 ToolExecutor 特判） */
+const queryStateTool: ToolDefinition = {
+	type: "function",
+	function: {
+		name: "query_state",
+		description:
+			"查询服务集群的结构化状态（全局状态模型 L0，framework-design §5）。不带 serviceId 返回全部服务的当前状态；带 serviceId 返回单个服务。",
+		parameters: {
+			type: "object",
+			properties: {
+				serviceId: {
+					type: "string",
+					description: "（可选）服务 id，如 demo-pusher",
+				},
+			},
+		},
+	},
+};
+
 /** 所有可用的工具定义 */
 export const ALL_TOOLS: ToolDefinition[] = [
 	readTool,
@@ -231,6 +250,7 @@ export const ALL_TOOLS: ToolDefinition[] = [
 	grepTool,
 	bashTool,
 	dispatchTool,
+	queryStateTool,
 ];
 
 /** 根据工具名称执行（不走权限检查，直接调用） */
