@@ -9,6 +9,7 @@
  *   WS   /ws           → 实时推送 agent 状态变化
  */
 import type { AgentRegistry } from "./agent-registry";
+import { queryAudit } from "./audit";
 import type { FlowEngine } from "./flow-engine";
 import { buildFlowManifest, validateFlowManifest } from "./flow-manifest";
 import type { Inbox } from "./inbox";
@@ -245,6 +246,26 @@ export function startServer(
 						validation,
 						flows: extras.flowEngine?.list() ?? [],
 					}),
+					{ headers: { "Content-Type": "application/json" } },
+				);
+			}
+
+			if (url.pathname === "/api/audit") {
+				// 事件审计检索（观测承诺：事件可回溯；按服务/类型过滤）
+				const serviceId = url.searchParams.get("serviceId") ?? undefined;
+				const eventType = url.searchParams.get("eventType") ?? undefined;
+				const limit = Number.parseInt(
+					url.searchParams.get("limit") ?? "30",
+					10,
+				);
+				return new Response(
+					JSON.stringify(
+						queryAudit({
+							serviceId,
+							eventType,
+							limit: Number.isFinite(limit) ? limit : 30,
+						}),
+					),
 					{ headers: { "Content-Type": "application/json" } },
 				);
 			}
