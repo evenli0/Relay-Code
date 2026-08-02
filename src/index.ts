@@ -194,6 +194,7 @@ ${e.text}
 		stateStore,
 		supervisor,
 		orchestrator,
+		flowEngine,
 	});
 
 	console.log(

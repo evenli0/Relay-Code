@@ -9,7 +9,10 @@
  *   WS   /ws           → 实时推送 agent 状态变化
  */
 import type { AgentRegistry } from "./agent-registry";
+import type { FlowEngine } from "./flow-engine";
+import { buildFlowManifest, validateFlowManifest } from "./flow-manifest";
 import type { Inbox } from "./inbox";
+import { loadNotifyRules } from "./notify-rules";
 import type { Orchestrator } from "./orchestrator";
 import type { Sink, SinkEvent } from "./sink";
 import type { StateStore } from "./state-store";
@@ -135,11 +138,12 @@ export function broadcastState(registry: AgentRegistry): void {
 	}
 }
 
-/** 建造者控制台扩展数据源（Phase5-C：服务集群 + 门控命中） */
+/** 建造者控制台扩展数据源（Phase5-C：服务集群 + 门控命中 + 编排图） */
 export interface ConsoleExtras {
 	stateStore?: StateStore;
 	supervisor?: Supervisor;
 	orchestrator?: Orchestrator;
+	flowEngine?: FlowEngine;
 }
 
 export function startServer(
@@ -225,6 +229,21 @@ export function startServer(
 						services: extras.supervisor?.getClusterStatus() ?? [],
 						state: extras.stateStore?.getL1Summary() ?? "",
 						gateHits: extras.orchestrator?.getGateHits() ?? [],
+					}),
+					{ headers: { "Content-Type": "application/json" } },
+				);
+			}
+
+			if (url.pathname === "/api/flows") {
+				// 建造者控制台：编排图（收编层动态生成，热加载后数据新鲜）
+				const contracts = extras.supervisor?.listContracts() ?? [];
+				const manifest = buildFlowManifest(contracts, loadNotifyRules());
+				const validation = validateFlowManifest(manifest, contracts);
+				return new Response(
+					JSON.stringify({
+						manifest,
+						validation,
+						flows: extras.flowEngine?.list() ?? [],
 					}),
 					{ headers: { "Content-Type": "application/json" } },
 				);

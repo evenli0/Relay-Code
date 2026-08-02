@@ -192,6 +192,9 @@
 <div class="section-title">🛰 服务集群</div>
 <div class="events" id="services"><div class="event">等待服务...</div></div>
 
+<div class="section-title">🔀 控制流（编排图）</div>
+<div class="events" id="flows"><div class="event">等待编排数据...</div></div>
+
 <div class="section-title">🎯 门控命中</div>
 <div class="events" id="gate-hits"><div class="event">等待事件...</div></div>
 
@@ -322,6 +325,55 @@ function renderServices(data) {
   el.innerHTML = html || '<div class="event">无常驻服务</div>';
 }
 
+const DISP_CN = { immediate: "唤醒大脑", defer: "积攒", notify: "推送", archive: "归档", default: "默认分级" };
+
+function renderFlows(data) {
+  const el = document.getElementById("flows");
+  const d = data.manifest;
+  if (!d || d.services.length === 0) {
+    el.innerHTML = '<div class="event">无常驻服务，无编排图</div>';
+    return;
+  }
+  let html = "";
+  // 校验结果
+  const v = data.validation || {};
+  for (const e of (v.errors || [])) {
+    html += '<div class="event" style="color:var(--error)">✗ ' + esc(e) + "</div>";
+  }
+  for (const w of (v.warnings || [])) {
+    html += '<div class="event" style="color:#d29922">⚠ ' + esc(w) + "</div>";
+  }
+  // 事件处置表
+  html += '<div class="event"><strong>事件处置</strong></div>';
+  for (const e of d.events) {
+    const mark = e.source === "rule" ? "（规则）" : e.source === "contract" ? "（契约）" : "（默认）";
+    html += '<div class="event">' + esc(e.serviceId) + "." + esc(e.eventType) +
+      " → " + esc(DISP_CN[e.disposition] || e.disposition) + mark + "</div>";
+  }
+  // 路由（pipe）
+  if (d.routes.length > 0) {
+    html += '<div class="event"><strong>路由（pipe）</strong></div>';
+    for (const r of d.routes) {
+      html += '<div class="event">' + esc(r.from) + " ─" + esc(r.eventType) + "→ " +
+        esc(r.to.join(", ")) + "</div>";
+    }
+  }
+  // 节奏（timer）
+  if (d.schedules.length > 0) {
+    html += '<div class="event"><strong>节奏（timer）</strong></div>';
+    for (const s of d.schedules) {
+      const spec = s.spec.type === "interval" ? "每 " + s.spec.every : s.spec.type === "cron" ? "cron " + s.spec.expr : "at " + s.spec.ts;
+      html += '<div class="event">' + esc(s.serviceId) + " @ " + esc(spec) + "</div>";
+    }
+  }
+  // fan-out 声明
+  if (data.flows && data.flows.length > 0) {
+    html += '<div class="event"><strong>并行聚合（fan-out）</strong></div>';
+    html += '<div class="event">flows: ' + data.flows.map(esc).join(", ") + "（flow run &lt;id&gt; 执行）</div>";
+  }
+  el.innerHTML = html;
+}
+
 function renderGateHits(data) {
   const el = document.getElementById("gate-hits");
   const hits = data.gateHits || [];
@@ -340,6 +392,9 @@ function pollServices() {
   fetch("/api/services").then(function (r) { return r.json(); }).then(function (d) {
     renderServices(d);
     renderGateHits(d);
+  }).catch(function () { /* 服务未启动时静默 */ });
+  fetch("/api/flows").then(function (r) { return r.json(); }).then(function (d) {
+    renderFlows(d);
   }).catch(function () { /* 服务未启动时静默 */ });
   setTimeout(pollServices, 2000);
 }
