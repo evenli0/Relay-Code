@@ -66,6 +66,43 @@ describe("StateStore（全局状态模型 L0）", () => {
 		expect(all).toHaveProperty("b");
 	});
 
+	test("后台上下文池：保留事件本身（上限截断）", () => {
+		for (let i = 0; i < 40; i++) {
+			store.ingest("demo-watcher", {
+				kind: "event",
+				type: "scan.done",
+				level: "silent",
+				payload: { scanned: i },
+				ts: i,
+			});
+		}
+		const ctx = store.getContextSummary();
+		expect(ctx).toContain("scan.done=40"); // 计数全量
+		expect(ctx).toContain("最近"); // 事件本身进入全景
+		// 上限 30：最早的 10 条被截断（scanned=0 不在），最新的在
+		expect(ctx).not.toContain('"scanned":0');
+		expect(ctx).toContain('"scanned":39');
+	});
+
+	test("全景上下文包含状态 + 计数 + 最近事件", () => {
+		store.ingest("demo-pusher", {
+			kind: "state",
+			updates: { mastered: 0.43 },
+		});
+		store.ingest("demo-watcher", {
+			kind: "event",
+			type: "opportunity.found",
+			level: "notify",
+			payload: { confidence: 0.95 },
+			ts: 1,
+		});
+		const ctx = store.getContextSummary();
+		expect(ctx).toContain("0.43");
+		expect(ctx).toContain("opportunity.found=1");
+		expect(ctx).toContain("opportunity.found@notify");
+		expect(ctx).toContain("0.95");
+	});
+
 	test("L1 摘要包含状态与事件计数", () => {
 		store.ingest("demo-pusher", {
 			kind: "state",

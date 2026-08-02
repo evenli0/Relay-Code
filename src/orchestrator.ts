@@ -338,15 +338,15 @@ export class Orchestrator {
 		}
 	}
 
-	/** 服务状态注入：StateStore L1 摘要，变化才注入（防上下文膨胀） */
+	/** 服务状态注入：后台上下文池全景（状态 + 计数 + 最近事件），变化才注入（防上下文膨胀） */
 	private injectStateSummary(): void {
 		if (!this.stateStore) return;
-		const summary = this.stateStore.getL1Summary();
+		const summary = this.stateStore.getContextSummary();
 		if (summary && summary !== this.lastStateSummary) {
 			this.lastStateSummary = summary;
 			this.messages.push({
 				role: "system",
-				content: `[服务状态]\n${summary}\n[你可以据此回答用户关于服务状态的问题]`,
+				content: `${summary}\n[你可以据此回答用户关于服务状态的问题]`,
 			});
 		}
 	}

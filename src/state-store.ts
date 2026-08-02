@@ -16,7 +16,14 @@ import {
 	readFileSync,
 	writeFileSync,
 } from "node:fs";
-import type { ServiceEvent } from "./protocol";
+import type { EventLevel, ServiceEvent } from "./protocol";
+
+interface PendingEvent {
+	type: string;
+	level: EventLevel;
+	payload: unknown;
+	ts: number;
+}
 
 interface ServiceStateEntry {
 	serviceId: string;
@@ -24,6 +31,8 @@ interface ServiceStateEntry {
 	state: Record<string, unknown>;
 	/** 事件计数（L2 摘要用："今天 142 次无发现"） */
 	eventCounts: Record<string, number>;
+	/** 后台上下文池：最近事件本身（唤醒/开口时全景注入；上限截断） */
+	pendingEvents: PendingEvent[];
 	lastEventAt: number;
 	lastHeartbeat: number | null;
 	updatedAt: number;
@@ -31,6 +40,8 @@ interface ServiceStateEntry {
 
 const STATE_DIR = ".relay/state";
 const PERSIST_DEBOUNCE_MS = 500;
+/** 后台池容量：每服务保留最近 N 条事件（防无限膨胀） */
+const PENDING_EVENTS_MAX = 30;
 
 export class StateStore {
 	private entries = new Map<string, ServiceStateEntry>();
@@ -44,6 +55,19 @@ export class StateStore {
 		} else if (event.kind === "event") {
 			entry.eventCounts[event.type] = (entry.eventCounts[event.type] ?? 0) + 1;
 			entry.lastEventAt = event.ts;
+			// 后台池：保留事件本身（上限截断，先进先出）
+			entry.pendingEvents.push({
+				type: event.type,
+				level: event.level,
+				payload: event.payload,
+				ts: event.ts,
+			});
+			if (entry.pendingEvents.length > PENDING_EVENTS_MAX) {
+				entry.pendingEvents.splice(
+					0,
+					entry.pendingEvents.length - PENDING_EVENTS_MAX,
+				);
+			}
 		} else if (event.kind === "heartbeat") {
 			entry.lastHeartbeat = event.ts;
 		}
@@ -73,6 +97,35 @@ export class StateStore {
 		if (!e) return null;
 		if (eventType) return e.eventCounts[eventType] ?? 0;
 		return { ...e.eventCounts };
+	}
+
+	/**
+	 * 全景上下文（唤醒/开口时注入）：状态 + 事件计数 + 最近事件（后台池）。
+	 * 大脑醒来看到的不是一条裸事件，而是完整的积累。
+	 */
+	getContextSummary(): string {
+		if (this.entries.size === 0) return "";
+		const lines: string[] = ["## 后台上下文（状态 + 事件积累）"];
+		for (const e of this.entries.values()) {
+			const stateStr = JSON.stringify(e.state).slice(0, 120);
+			const counts = Object.entries(e.eventCounts)
+				.map(([t, n]) => `${t}=${n}`)
+				.join(" ");
+			lines.push(
+				`  ${e.serviceId}: ${stateStr}${counts ? ` | ${counts}` : ""}`,
+			);
+			// 最近事件（每服务至多 5 条，按时间倒序）
+			const recent = [...e.pendingEvents]
+				.slice(-5)
+				.reverse()
+				.map(
+					(p) =>
+						`[${p.type}@${p.level}] ${JSON.stringify(p.payload).slice(0, 80)}`,
+				)
+				.join(" ");
+			if (recent) lines.push(`    └ 最近: ${recent}`);
+		}
+		return lines.join("\n");
 	}
 
 	/** 全部服务一行摘要（L1，供 LLM/终端/控制台） */
@@ -105,6 +158,8 @@ export class StateStore {
 				const raw = JSON.parse(
 					readFileSync(`${STATE_DIR}/${file}`, "utf-8"),
 				) as ServiceStateEntry;
+				// 旧快照兼容：无后台池字段时补空
+				if (!Array.isArray(raw.pendingEvents)) raw.pendingEvents = [];
 				this.entries.set(raw.serviceId, raw);
 				restored++;
 			} catch {
@@ -121,6 +176,7 @@ export class StateStore {
 				serviceId,
 				state: {},
 				eventCounts: {},
+				pendingEvents: [],
 				lastEventAt: 0,
 				lastHeartbeat: null,
 				updatedAt: Date.now(),
