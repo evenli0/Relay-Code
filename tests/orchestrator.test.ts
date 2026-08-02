@@ -28,7 +28,7 @@ describe("Orchestrator 纯代码调度（LLM 卸任）", () => {
 	test("agent_done 批处理不再调用 LLM", async () => {
 		const inbox = new Inbox();
 		const registry = new AgentRegistry();
-		const orch = new Orchestrator(inbox, registry, "t", new FlowGate("show"));
+		const orch = new Orchestrator(inbox, registry, "t", new FlowGate());
 
 		const llm = new ScriptedLLM([text("ok")]);
 		setMockTransport(llm);
@@ -42,10 +42,10 @@ describe("Orchestrator 纯代码调度（LLM 卸任）", () => {
 		expect(llm.calls).toBe(1);
 	});
 
-	test("digest 事件静默归档并输出摘要（不占 LLM 上下文）", async () => {
+	test("defer 事件静默归档并输出摘要（不占 LLM 上下文）", async () => {
 		const inbox = new Inbox();
 		const registry = new AgentRegistry();
-		const orch = new Orchestrator(inbox, registry, "t", new FlowGate("digest"));
+		const orch = new Orchestrator(inbox, registry, "t", new FlowGate("defer"));
 
 		const llm = new ScriptedLLM([text("ok")]);
 		setMockTransport(llm);
@@ -69,7 +69,7 @@ describe("Orchestrator 纯代码调度（LLM 卸任）", () => {
 	test("notify 动作走通知出口（sink notice）", async () => {
 		const inbox = new Inbox();
 		const registry = new AgentRegistry();
-		const gate = new FlowGate("show", [
+		const gate = new FlowGate(undefined, [
 			{ match: { eventType: "agent.done" }, action: "notify" },
 		]);
 		const orch = new Orchestrator(inbox, registry, "t", gate);
@@ -170,7 +170,7 @@ describe("Orchestrator 纯代码调度（LLM 卸任）", () => {
 		expect(hits[0]).toMatchObject({
 			role: "demo-watcher",
 			eventType: "scan.done",
-			action: "digest",
+			action: "defer",
 		});
 		expect(hits[1]).toMatchObject({
 			eventType: "opportunity.found",
@@ -178,14 +178,14 @@ describe("Orchestrator 纯代码调度（LLM 卸任）", () => {
 		});
 	});
 
-	test("服务事件规则可覆盖：用户 rule 让 notify 降级为 digest", async () => {
+	test("服务事件规则可覆盖：用户 rule 让 notify 降级为 defer", async () => {
 		const inbox = new Inbox();
 		const registry = new AgentRegistry();
-		const gate = new FlowGate("show");
+		const gate = new FlowGate();
 		const orch = new Orchestrator(inbox, registry, "t", gate);
 		orch.addGateRule({
 			match: { eventType: "opportunity.found" },
-			action: "digest",
+			action: "defer",
 		});
 
 		const notices: string[] = [];

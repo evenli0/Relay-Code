@@ -6,6 +6,7 @@
  * 行为从契约来，不从代码来（"设计即服务"）。
  */
 
+import { type Disposition, normalizeDisposition } from "./flow-gate";
 import type { ScheduleSpec } from "./protocol";
 
 export type Archetype = "pusher" | "watcher" | "interactive" | "hybrid";
@@ -51,6 +52,11 @@ export interface ServiceContract {
 	consumes: string[];
 	/** 默认节奏（推进型服务用；Scheduler 到点发 schedule 指令，framework-design §7） */
 	schedule?: ScheduleSpec;
+	/**
+	 * 按事件类型的默认处置声明（门控"服务声明"层：框架按此处置，
+	 * 用户规则可覆盖）。例：{ "opportunity.found": "immediate", "scan.done": "defer" }
+	 */
+	disposition?: Record<string, Disposition>;
 	permissions: ServicePermissions;
 }
 
@@ -107,6 +113,24 @@ export function validateContract(raw: unknown): ContractValidation {
 		const v = c[key];
 		if (v !== undefined && !Array.isArray(v)) {
 			errors.push(`${key} 必须是数组`);
+		}
+	}
+
+	// disposition：按事件类型的默认处置声明（eventType → 处置模式）
+	const disp = c.disposition;
+	if (disp !== undefined) {
+		if (typeof disp !== "object" || disp === null || Array.isArray(disp)) {
+			errors.push(
+				"disposition 必须是对象（eventType → immediate/defer/notify/archive）",
+			);
+		} else {
+			for (const [type, d] of Object.entries(disp as Record<string, unknown>)) {
+				if (typeof d !== "string" || normalizeDisposition(d) === null) {
+					errors.push(
+						`disposition.${type} 必须是 immediate/defer/notify/archive`,
+					);
+				}
+			}
 		}
 	}
 

@@ -11,6 +11,14 @@
 
 export type EventLevel = "trace" | "silent" | "info" | "notify" | "critical";
 
+/**
+ * 事件的处置意图（服务进程表达"急/不急"，门控处置决策的第二层"服务声明"）：
+ *   - immediate：请主 agent 立即处理（唤醒）
+ *   - defer：积攒进后台上下文池即可（不唤醒不打扰）
+ * 不写 = 未声明，由门控按契约 disposition / 事件级别决定。
+ */
+export type EventIntent = "immediate" | "defer";
+
 /** 节奏规格（Scheduler 用，Step B/C 接入） */
 export type ScheduleSpec =
 	| { type: "interval"; every: string }
@@ -27,6 +35,8 @@ export type ServiceEvent =
 			type: string;
 			level: EventLevel;
 			payload: unknown;
+			/** 处置意图（可选；不写 = 门控按契约/级别决定） */
+			intent?: EventIntent;
 			correlationId?: string;
 			ts: number;
 	  }

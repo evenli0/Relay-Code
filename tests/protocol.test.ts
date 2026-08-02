@@ -20,6 +20,22 @@ describe("protocol round-trip", () => {
 			payload: { from: "human", question: "hello", at: 1 },
 			ts: 2,
 		},
+		{
+			kind: "event",
+			type: "opportunity.found",
+			level: "notify",
+			payload: { confidence: 0.95 },
+			intent: "immediate", // 处置意图：服务进程表达"请立即处理"
+			ts: 3,
+		},
+		{
+			kind: "event",
+			type: "scan.done",
+			level: "silent",
+			payload: { scanned: 1 },
+			intent: "defer", // 处置意图：只积攒
+			ts: 4,
+		},
 		{ kind: "progress", round: 1, action: "read", summary: "reading" },
 		{ kind: "result", taskId: "t1", status: "completed", output: "ok" },
 		{ kind: "result", taskId: "t2", status: "error", output: "boom" },

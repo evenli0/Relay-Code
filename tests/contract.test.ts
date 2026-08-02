@@ -53,6 +53,26 @@ describe("validateContract", () => {
 		expect(validateContract({ ...valid, emits: 42 }).ok).toBe(false);
 	});
 
+	test("disposition 校验（按事件类型声明处置）", () => {
+		expect(
+			validateContract({
+				...valid,
+				disposition: {
+					"opportunity.found": "immediate",
+					"scan.done": "defer",
+				},
+			}).ok,
+		).toBe(true);
+		expect(validateContract({ ...valid, disposition: "all" }).ok).toBe(false);
+		expect(validateContract({ ...valid, disposition: { x: "boom" } }).ok).toBe(
+			false,
+		);
+		// 旧值兼容：show/digest/drop 仍可解析为合法处置
+		expect(
+			validateContract({ ...valid, disposition: { x: "digest" } }).ok,
+		).toBe(true);
+	});
+
 	test("permissions 校验", () => {
 		expect(validateContract({ ...valid, permissions: "all" }).ok).toBe(false);
 		expect(validateContract({ ...valid, permissions: { fs: "read" } }).ok).toBe(

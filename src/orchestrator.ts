@@ -10,7 +10,7 @@ import {
 	toolResultLine,
 } from "./display";
 import { unwrapError } from "./errors";
-import { FlowGate } from "./flow-gate";
+import { type Disposition, FlowGate, intentToDisposition } from "./flow-gate";
 import { Harness } from "./harness";
 import { Inbox } from "./inbox";
 import { callLLM } from "./llm";
@@ -59,6 +59,10 @@ export class Orchestrator {
 	private gateHits: GateHit[] = [];
 	private lastStateSummary = "";
 	private lastCorrelationSummary = "";
+	/** daemon 模式（start() 循环在跑）：immediate 事件排队等唤醒 */
+	private asyncMode = false;
+	/** 唤醒队列（处置 immediate 的服务事件，等待主循环带全景唤醒大脑） */
+	private wakeupQueue: { serviceId: string; event: ServiceEvent }[] = [];
 
 	setSink(s: Sink): void {
 		this.sink = s;
@@ -86,6 +90,7 @@ export class Orchestrator {
 		this.currentThreadId = threadId ?? `thread-${Date.now().toString(36)}`;
 		// 仅在显式传入时启用异步模式（daemon 模式），否则兼容同步 dispatch
 		if (inbox && registry) {
+			this.asyncMode = true;
 			this.harness = new Harness(inbox, registry, this.currentThreadId);
 		} else {
 			this.harness = new Harness();
@@ -249,7 +254,7 @@ export class Orchestrator {
 		milestone(`${dones.length} 个子 Agent 完成`);
 
 		// 纯代码调度：不再调用 LLM（framework-design §4，LLM 卸任）。
-		// 门控规则决定每个事件的去向：show 展示 / digest 静默归档 / notify 通知出口 / drop 丢弃
+		// 处置模式决定去向：immediate 唤醒大脑 / defer 静默归档 / notify 通知出口 / archive 丢弃
 		for (const d of dones) {
 			const action = this.gate.decide(d);
 			const role = d.agentRole ?? "未知";
@@ -257,16 +262,6 @@ export class Orchestrator {
 			this.recordGateHit(role, d.eventType ?? d.type, d.level, action);
 
 			switch (action) {
-				case "show": {
-					const output = d.result?.output?.slice(0, 500) ?? "无输出";
-					const status = d.type === "agent_error" ? "❌ ERROR" : "✅ DONE";
-					console.log(`\n### ${status} [${role}] (${id})\n${output}\n`);
-					await saveDialogue(
-						"system",
-						`[子Agent结果|show] [${role}] ${output}`,
-					);
-					break;
-				}
 				case "notify": {
 					// 通知出口：sink notice(notify) → WS/终端广播（server.ts 已订阅）
 					const output = d.result?.output?.slice(0, 500) ?? "无输出";
@@ -282,16 +277,44 @@ export class Orchestrator {
 					);
 					break;
 				}
-				case "digest": {
+				case "defer": {
 					this.digestQueue.push(d);
 					await saveDialogue(
 						"system",
-						`[子Agent结果|digest] [${role}] ${d.result?.output?.slice(0, 200) ?? "无输出"}`,
+						`[子Agent结果|defer] [${role}] ${d.result?.output?.slice(0, 200) ?? "无输出"}`,
 					);
 					break;
 				}
-				case "drop": {
-					await saveDialogue("system", `[子Agent结果|drop] [${role}]`);
+				case "archive": {
+					await saveDialogue("system", `[子Agent结果|archive] [${role}]`);
+					break;
+				}
+				case "immediate": {
+					// 唤醒通道：daemon 排队等唤醒（节流）；非 daemon 降级为通知出口
+					if (this.asyncMode) {
+						this.wakeupQueue.push({
+							serviceId: role,
+							event: {
+								kind: "event",
+								type: d.eventType ?? "agent.done",
+								level: d.level ?? "info",
+								payload: d.result?.output ?? "",
+								ts: d.timestamp,
+							},
+						});
+					} else {
+						const output = d.result?.output?.slice(0, 500) ?? "无输出";
+						console.log(`\n🔔 [${role}] (${id})\n${output}\n`);
+						this.emit({
+							kind: "notice",
+							level: "notify",
+							text: `[${role}] ${output.slice(0, 200)}`,
+						});
+					}
+					await saveDialogue(
+						"system",
+						`[子Agent结果|immediate] [${role}] ${d.result?.output?.slice(0, 200) ?? "无输出"}`,
+					);
 					break;
 				}
 			}
@@ -330,41 +353,41 @@ export class Orchestrator {
 
 	/**
 	 * 服务事件入口（Supervisor.onNodeEvent 接入，Phase3-A）：
-	 * 门控决策 + 分级语义映射——silent/trace 吸收、info 展示、notify 走通知出口，
-	 * 用户规则（rule 命令）优先覆盖。
+	 * 处置决策——用户规则（最高）→ 服务声明（事件 intent / 契约 disposition，
+	 * 由 declaredContract 传入）→ 默认分级（silent 积攒 / notify 推送 / critical 唤醒）。
+	 * 除 archive 外所有事件都进后台池（StateStore 已先行 ingest，全景积累）。
 	 */
-	handleServiceEvent(serviceId: string, event: ServiceEvent): void {
+	handleServiceEvent(
+		serviceId: string,
+		event: ServiceEvent,
+		declaredContract?: Disposition,
+	): void {
 		if (event.kind !== "event") return; // state/heartbeat 进 StateStore，不进决策
 
 		// 关联层：带实体的事件进候选池（规则预筛，framework-design §8）
 		this.correlator?.ingest(serviceId, event.type, event.payload, event.ts);
 
-		let action = this.gate.decide({
-			type: "agent_done",
-			threadId: this.currentThreadId,
-			timestamp: event.ts,
-			agentRole: serviceId,
-			agentId: serviceId,
-			level: event.level,
-			eventType: event.type,
-		} as AgentEvent);
+		// 服务声明层：事件 intent（急/不急）优先于契约静态声明
+		const declared = intentToDisposition(event.intent) ?? declaredContract;
 
-		// 分级语义：门控默认"show"针对 agent_done；服务事件按 level 细化
-		if (action === "show") {
-			if (event.level === "silent" || event.level === "trace") {
-				action = "digest";
-			} else if (event.level === "notify") {
-				action = "notify";
-			}
-		}
+		const action = this.gate.decide(
+			{
+				type: "agent_done",
+				threadId: this.currentThreadId,
+				timestamp: event.ts,
+				agentRole: serviceId,
+				agentId: serviceId,
+				level: event.level,
+				eventType: event.type,
+			} as AgentEvent,
+			declared,
+		);
 
 		const payload = formatPayload(event.payload);
 		this.recordGateHit(serviceId, event.type, event.level, action);
 		switch (action) {
-			case "show":
-				console.log(`\n### [${serviceId}] ${event.type}\n${payload}\n`);
-				break;
 			case "notify": {
+				// 通知出口：sink notice(notify) → WS/终端广播
 				console.log(`\n🔔 [${serviceId}] ${event.type}\n${payload}\n`);
 				this.emit({
 					kind: "notice",
@@ -373,7 +396,8 @@ export class Orchestrator {
 				});
 				break;
 			}
-			case "digest":
+			case "defer":
+				// 静默积攒：进摘要队列（用户开口/唤醒时吐摘要）
 				this.digestQueue.push({
 					type: "agent_done",
 					threadId: this.currentThreadId,
@@ -383,7 +407,29 @@ export class Orchestrator {
 					eventType: event.type,
 				} as AgentEvent);
 				break;
-			case "drop":
+			case "immediate": {
+				// 唤醒通道：daemon 排队等主循环带全景唤醒大脑（节流）；非 daemon 降级通知出口
+				if (this.asyncMode) {
+					this.wakeupQueue.push({ serviceId, event });
+					this.digestQueue.push({
+						type: "agent_done",
+						threadId: this.currentThreadId,
+						timestamp: event.ts,
+						agentRole: serviceId,
+						level: event.level,
+						eventType: event.type,
+					} as AgentEvent);
+				} else {
+					console.log(`\n🔔 [${serviceId}] ${event.type}\n${payload}\n`);
+					this.emit({
+						kind: "notice",
+						level: "notify",
+						text: `[${serviceId}] ${event.type}: ${payload.slice(0, 200)}`,
+					});
+				}
+				break;
+			}
+			case "archive":
 				break;
 		}
 	}

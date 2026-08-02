@@ -96,8 +96,8 @@ async function daemonMode(): Promise<void> {
 	const { Correlator } = await import("./correlator");
 	const { Scheduler } = await import("./scheduler");
 	const { Supervisor } = await import("./supervisor");
-	// 门控：文件沉淀规则（用户反馈）+ 默认 show
-	const gate = new FlowGate("show", loadNotifyRules());
+	// 门控：文件沉淀规则（用户反馈）+ 默认分级（silent 积攒 / notify 推送 / critical 唤醒）
+	const gate = new FlowGate(undefined, loadNotifyRules());
 	// 服务集群：Supervisor 管理常驻服务 + 节奏调度
 	const scheduler = new Scheduler();
 	const supervisor = new Supervisor({ scheduler });
@@ -114,7 +114,14 @@ async function daemonMode(): Promise<void> {
 	);
 	supervisor.onNodeEvent = (id, msg) => {
 		stateStore.ingest(id, msg);
-		orchestrator.handleServiceEvent(id, msg);
+		// 契约 disposition（服务声明层）随事件传入门控；用户规则仍可覆盖
+		orchestrator.handleServiceEvent(
+			id,
+			msg,
+			msg.kind === "event"
+				? supervisor.getContractDisposition(id, msg.type)
+				: undefined,
+		);
 	};
 	const restored = supervisor.restore();
 	if (restored.length > 0) {
@@ -262,12 +269,15 @@ ${e.text}
 
 		if (input.startsWith("rule ")) {
 			// rule <eventType> <action> —— 用户反馈沉淀："这个别告诉我"
+			// action: immediate（唤醒大脑）/ defer（积攒）/ notify（推送）/ archive（丢弃）
+			// 兼容旧值：show→notify / digest→defer / drop→archive
 			const parts = input.slice(5).trim().split(/\s+/);
-			const [eventType, action] = parts;
-			const valid = ["show", "digest", "notify", "drop"];
-			if (!eventType || !action || !valid.includes(action)) {
+			const [eventType, actionRaw] = parts;
+			const { normalizeDisposition } = await import("./flow-gate");
+			const action = normalizeDisposition(actionRaw);
+			if (!eventType || !action) {
 				console.log(
-					"用法: rule <eventType> <action>  (action: show/digest/notify/drop)",
+					"用法: rule <eventType> <action>  (action: immediate/defer/notify/archive，兼容 show/digest/drop)",
 				);
 				process.stdout.write("> ");
 				return;

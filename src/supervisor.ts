@@ -12,6 +12,7 @@
 
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { ActorHandle } from "./actor-handle";
+import type { Disposition } from "./flow-gate";
 import type { ServiceEvent } from "./protocol";
 import type { Scheduler } from "./scheduler";
 import { type ServiceContract, validateContract } from "./service-contract";
@@ -143,7 +144,7 @@ export class Supervisor {
 		for (const targetId of targets) {
 			if (targetId === fromId) continue; // 不投回自己
 			const node = this.nodes.get(targetId);
-			if (!node || node.status !== "running") continue;
+			if (node?.status !== "running") continue;
 			node.handle?.send({
 				kind: "event",
 				type: msg.type,
@@ -248,6 +249,14 @@ export class Supervisor {
 			uptimeMs: now - n.startedAt,
 			restartCount: n.restartCount,
 		}));
+	}
+
+	/** 契约处置声明查询（门控"服务声明"层：按事件类型，用户规则可覆盖） */
+	getContractDisposition(
+		id: string,
+		eventType: string,
+	): Disposition | undefined {
+		return this.nodes.get(id)?.contract.disposition?.[eventType];
 	}
 
 	getStatus(id: string):
