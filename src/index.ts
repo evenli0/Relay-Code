@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { AgentRegistry } from "./agent-registry";
+import { appendAudit, toAuditEntry } from "./audit";
 import { milestone } from "./display";
 import { Inbox } from "./inbox";
 import { saveDialogue } from "./memory";
@@ -113,6 +114,8 @@ async function daemonMode(): Promise<void> {
 		correlator,
 	);
 	supervisor.onNodeEvent = (id, msg) => {
+		// 事件审计：统一入口全量落盘（.relay/events/<date>.jsonl，诚实条款的审计底座）
+		appendAudit(toAuditEntry(id, msg));
 		stateStore.ingest(id, msg);
 		// 契约 disposition（服务声明层）随事件传入门控；用户规则仍可覆盖
 		orchestrator.handleServiceEvent(
@@ -288,6 +291,32 @@ ${e.text}
 						: targetId,
 				);
 				console.log(ctx);
+			}
+			process.stdout.write("> ");
+			return;
+		}
+
+		if (input.startsWith("audit")) {
+			// audit [serviceId] [eventType] —— 事件审计检索（最近 20 条，倒序）
+			const parts = input.slice(5).trim().split(/\s+/);
+			const { queryAudit } = await import("./audit");
+			const rows = queryAudit({
+				serviceId: parts[0] || undefined,
+				eventType: parts[1] || undefined,
+				limit: 20,
+			});
+			if (rows.length === 0) {
+				console.log("审计无记录（.relay/events/）");
+			} else {
+				for (const r of rows) {
+					const time = new Date(r.ts).toLocaleTimeString("zh-CN", {
+						hour12: false,
+					});
+					const type = r.type ? ` ${r.type}@${r.level ?? ""}` : "";
+					console.log(
+						`  [${time}] ${r.serviceId} ${r.kind}${type}${r.payload !== undefined ? ` ${JSON.stringify(r.payload).slice(0, 80)}` : ""}`,
+					);
+				}
 			}
 			process.stdout.write("> ");
 			return;
