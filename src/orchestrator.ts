@@ -36,6 +36,9 @@ import { MAX_REACT_ITERATIONS } from "./types";
  *   - User 指令优先，单独一轮处理
  *   - 子 Agent 结果合并一轮处理
  */
+/** 唤醒节流冷却（immediate 事件：冷却窗口内最多唤醒大脑一次，防噪音成本爆炸） */
+const DEFAULT_WAKEUP_COOLDOWN_MS = 60_000;
+
 /** 门控命中记录（建造者控制台：为何 notify / 为何 digest，framework-design §11） */
 export interface GateHit {
 	ts: number;
@@ -62,7 +65,12 @@ export class Orchestrator {
 	/** daemon 模式（start() 循环在跑）：immediate 事件排队等唤醒 */
 	private asyncMode = false;
 	/** 唤醒队列（处置 immediate 的服务事件，等待主循环带全景唤醒大脑） */
-	private wakeupQueue: { serviceId: string; event: ServiceEvent }[] = [];
+	private wakeupQueue: {
+		serviceId: string;
+		event: Extract<ServiceEvent, { kind: "event" }>;
+	}[] = [];
+	private lastWakeupAt = 0;
+	private wakeupCooldownMs = DEFAULT_WAKEUP_COOLDOWN_MS;
 
 	setSink(s: Sink): void {
 		this.sink = s;
@@ -109,6 +117,16 @@ export class Orchestrator {
 		this.gate.addRule(rule);
 	}
 
+	/** 唤醒节流冷却（测试可调短；默认 60s） */
+	setWakeupCooldown(ms: number): void {
+		this.wakeupCooldownMs = ms;
+	}
+
+	/** 排队中的唤醒事件数（节流测试断言用） */
+	getPendingWakeups(): number {
+		return this.wakeupQueue.length;
+	}
+
 	/** 门控命中记录（建造者控制台，framework-design §11） */
 	getGateHits(): GateHit[] {
 		return [...this.gateHits];
@@ -151,6 +169,9 @@ export class Orchestrator {
 		let tick = 0;
 
 		while (true) {
+			// 唤醒通道：immediate 事件（用户不在场时，带全景唤醒大脑；节流内继续排队）
+			await this.processWakeups();
+
 			if (this.inbox.isEmpty()) {
 				await new Promise((r) => setTimeout(r, 1000));
 				cleanupCounter++;
@@ -194,6 +215,66 @@ export class Orchestrator {
 				cleanupCounter = 0;
 			}
 		}
+	}
+
+	// ─── 唤醒通道（immediate 事件 → 大脑）────────────────────
+
+	/**
+	 * 唤醒通道：处置 immediate 的服务事件 → 带全景唤醒大脑一次。
+	 * 节流：冷却窗口（默认 60s）内最多唤醒一次，其余继续排队（进池积累，
+	 * 不丢）。大脑醒来带完整积累（后台池 + 关联候选），决策后告知/行动/调规则。
+	 */
+	async processWakeups(): Promise<void> {
+		if (this.wakeupQueue.length === 0) return;
+		const now = Date.now();
+		if (now - this.lastWakeupAt < this.wakeupCooldownMs) return;
+		this.lastWakeupAt = now;
+
+		const events = this.wakeupQueue.splice(0);
+		milestone(`${events.length} 个服务事件触发唤醒`);
+
+		// 先吐出积压的静默摘要
+		this.flushDigest();
+
+		// 全景：后台上下文池（强制注入最新积累，为决策提供依据）
+		if (this.stateStore) {
+			const ctx = this.stateStore.getContextSummary();
+			if (ctx) {
+				this.messages.push({
+					role: "system",
+					content: `${ctx}\n[以上是后台上下文全景]`,
+				});
+				this.lastStateSummary = ctx;
+			}
+		}
+		// 关联候选（跨服务上下文）
+		this.injectCorrelation();
+		// 首轮 system prompt（对话尚不存在时）
+		await this.ensureSystemPrompt();
+
+		const lines = events.map(
+			({ serviceId, event }) =>
+				`[${serviceId}] ${event.type} @${event.level}: ${formatPayload(event.payload).slice(0, 120)}`,
+		);
+		this.messages.push({
+			role: "system",
+			content: `[服务事件唤醒]\n${lines.join("\n")}\n[这些事件被服务声明或规则判定为需要你立即处理。请判断：是否行动、是否告知用户、或是否建议沉淀规则（如"这类以后不用唤醒"）。]`,
+		});
+
+		const result = await this.reactLoop();
+		this.emit({ kind: "llm_response", text: result });
+	}
+
+	/** 首轮 system prompt（唤醒时对话可能尚不存在） */
+	private async ensureSystemPrompt(): Promise<void> {
+		if (this.messages.length > 0) return;
+		let systemPrompt = buildSystemPrompt();
+		const snapshot = this.registry.getSnapshot();
+		if (snapshot) {
+			systemPrompt += `\n\n${snapshot}\n[以上是当前运行中的子 Agent 状态]`;
+		}
+		this.messages.push({ role: "system", content: systemPrompt });
+		await saveDialogue("system", systemPrompt);
 	}
 
 	// ─── 事件处理 ─────────────────────────────────────────────
