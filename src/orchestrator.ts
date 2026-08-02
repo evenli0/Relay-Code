@@ -119,6 +119,11 @@ export class Orchestrator {
 		this.gate.addRule(rule);
 	}
 
+	/** 接入 Flow 引擎（run_flow 工具：fan-out/merge 执行器） */
+	setFlowEngine(engine: import("./flow-engine").FlowEngine): void {
+		this.harness.setFlowEngine(engine);
+	}
+
 	/** 唤醒节流冷却（测试可调短；默认 60s） */
 	setWakeupCooldown(ms: number): void {
 		this.wakeupCooldownMs = ms;

@@ -149,6 +149,12 @@ async function daemonMode(): Promise<void> {
 		`[flow] 编排图: ${manifest.services.length} 服务 · ${manifest.events.length} 事件边 · ${manifest.routes.length} 路由 · ${manifest.schedules.length} 节奏`,
 	);
 
+	// Flow 引擎：fan-out/merge 并行聚合（flows/ 声明文件）
+	const { FlowEngine } = await import("./flow-engine");
+	const { ToolExecutor } = await import("./tool-executor");
+	const flowEngine = new FlowEngine(new ToolExecutor());
+	orchestrator.setFlowEngine(flowEngine);
+
 	// Sink 事件总线
 	const { MultiSink } = await import("./sink");
 	const { createWsSink } = await import("./server");
@@ -416,6 +422,31 @@ ${e.text}
 			console.log(
 				`[reload] 启动 ${r.started.length} 个: ${r.started.join(", ") || "无"}；停止 ${r.stopped.length} 个: ${r.stopped.join(", ") || "无"}${r.errors.length > 0 ? `；错误: ${r.errors.join("; ")}` : ""}`,
 			);
+			process.stdout.write("> ");
+			return;
+		}
+
+		if (input.startsWith("flow ")) {
+			// flow list / flow run <id> —— fan-out/merge 并行聚合原语
+			const parts = input.slice(5).trim().split(/\s+/);
+			const [sub, arg] = parts;
+			if (sub === "list") {
+				const ids = flowEngine.list();
+				console.log(
+					ids.length > 0
+						? `已声明的 flow: ${ids.join(", ")}`
+						: "无 flow（flows/<id>.json 声明）",
+				);
+			} else if (sub === "run" && arg) {
+				const r = await flowEngine.runFanout(arg);
+				if (r.ok) {
+					console.log(`[flow] ${arg}（merge=${r.merge}）:\n${r.output}`);
+				} else {
+					console.log(`[flow] 失败: ${r.error}`);
+				}
+			} else {
+				console.log("用法: flow list | flow run <id>");
+			}
 			process.stdout.write("> ");
 			return;
 		}

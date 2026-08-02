@@ -57,6 +57,11 @@ export class Harness {
 		this.executor.gate = g;
 	}
 
+	/** 接入 Flow 引擎（run_flow 工具的 fan-out/merge 执行器） */
+	setFlowEngine(engine: import("./flow-engine").FlowEngine): void {
+		this.executor.flowEngine = engine;
+	}
+
 	/** 更新 threadId（每次新对话时） */
 	setThreadId(threadId: string): void {
 		this._threadId = threadId;

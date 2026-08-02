@@ -272,6 +272,26 @@ const queryStateTool: ToolDefinition = {
 	},
 };
 
+/** run_flow 工具的 schema（fan-out/merge 原语：执行并行聚合 flow） */
+const runFlowTool: ToolDefinition = {
+	type: "function",
+	function: {
+		name: "run_flow",
+		description:
+			"执行并行聚合流（fan-out/merge 原语）：按 flows/<id>.json 声明并行派发多个子 agent 任务并合并结果。参数：id（必填，flow 文件名，如 market-scan）。",
+		parameters: {
+			type: "object",
+			required: ["id"],
+			properties: {
+				id: {
+					type: "string",
+					description: "flow id（flows/<id>.json）",
+				},
+			},
+		},
+	},
+};
+
 /** set_rule 工具的 schema（学习闭环：LLM 通过对话调整门控处置规则） */
 const setRuleTool: ToolDefinition = {
 	type: "function",
@@ -311,6 +331,7 @@ export const ALL_TOOLS: ToolDefinition[] = [
 	queryStateTool,
 	createServiceTool,
 	setRuleTool,
+	runFlowTool,
 ];
 
 /** 根据工具名称执行（不走权限检查，直接调用） */

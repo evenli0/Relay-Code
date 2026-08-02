@@ -36,6 +36,8 @@ export class ToolExecutor {
 	serviceId?: string;
 	/** 门控（set_rule 工具的学习闭环目标，与 orchestrator 共享同一实例） */
 	gate?: import("./flow-gate").FlowGate;
+	/** Flow 引擎（run_flow 工具的 fan-out/merge 执行器） */
+	flowEngine?: import("./flow-engine").FlowEngine;
 
 	/** 注入服务契约权限（Supervisor/actor 启动时） */
 	setPermissions(p: ServicePermissions | null): void {
@@ -80,6 +82,17 @@ export class ToolExecutor {
 			const serviceId =
 				typeof args.serviceId === "string" ? args.serviceId : undefined;
 			return JSON.stringify(this.stateStore.queryState(serviceId), null, 2);
+		}
+
+		// run_flow：fan-out/merge 原语——执行 flows/<id>.json 声明的并行聚合流
+		if (toolName === "run_flow") {
+			if (!this.flowEngine) return "run_flow 不可用：FlowEngine 未接入";
+			const id = typeof args.id === "string" ? args.id.trim() : "";
+			if (!id) return "run_flow 需要 id 参数（flows/<id>.json）";
+			const r = await this.flowEngine.runFanout(id);
+			return r.ok
+				? `[run_flow] ${id}（merge=${r.merge}）:\n${r.output}`
+				: `[run_flow] 失败: ${r.error}`;
 		}
 
 		// set_rule：学习闭环——LLM 通过对话调整门控处置规则（archive 仅用户可设）
