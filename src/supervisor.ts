@@ -259,6 +259,11 @@ export class Supervisor {
 		return this.nodes.get(id)?.contract.disposition?.[eventType];
 	}
 
+	/** 全部在管契约（Flow 收编层的数据源） */
+	listContracts(): ServiceContract[] {
+		return [...this.nodes.values()].map((n) => n.contract);
+	}
+
 	getStatus(id: string):
 		| {
 				status: string;

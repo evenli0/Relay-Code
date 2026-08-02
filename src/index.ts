@@ -130,6 +130,25 @@ async function daemonMode(): Promise<void> {
 		);
 	}
 
+	// 编排收编：FlowManifest 生成 + 静态交叉校验（流断链启动即报）
+	const { buildFlowManifest, validateFlowManifest } = await import(
+		"./flow-manifest"
+	);
+	const contracts = supervisor.listContracts();
+	const manifest = buildFlowManifest(contracts, loadNotifyRules());
+	const flowCheck = validateFlowManifest(manifest, contracts);
+	if (flowCheck.errors.length > 0) {
+		console.log(
+			`[flow] ✗ 编排错误（请修复）:\n  ${flowCheck.errors.join("\n  ")}`,
+		);
+	}
+	if (flowCheck.warnings.length > 0) {
+		console.log(`[flow] ⚠ 编排警告:\n  ${flowCheck.warnings.join("\n  ")}`);
+	}
+	console.log(
+		`[flow] 编排图: ${manifest.services.length} 服务 · ${manifest.events.length} 事件边 · ${manifest.routes.length} 路由 · ${manifest.schedules.length} 节奏`,
+	);
+
 	// Sink 事件总线
 	const { MultiSink } = await import("./sink");
 	const { createWsSink } = await import("./server");
