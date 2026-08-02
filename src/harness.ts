@@ -1,5 +1,6 @@
 import type { AgentRegistry } from "./agent-registry";
 import { dispatch, dispatchAsync } from "./dispatcher";
+import type { FlowGate } from "./flow-gate";
 import type { Inbox } from "./inbox";
 import { assembleMessages } from "./message-assembler";
 import { PlanManager } from "./plan-manager";
@@ -49,6 +50,11 @@ export class Harness {
 	/** 接入服务集群（create_service 工具的热部署目标） */
 	setSupervisor(s: Supervisor): void {
 		this.executor.supervisor = s;
+	}
+
+	/** 接入门控（set_rule 工具的学习闭环目标，与 orchestrator 共享实例） */
+	setGate(g: FlowGate): void {
+		this.executor.gate = g;
 	}
 
 	/** 更新 threadId（每次新对话时） */

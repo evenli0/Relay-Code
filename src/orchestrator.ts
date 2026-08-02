@@ -105,6 +105,8 @@ export class Orchestrator {
 		}
 		if (stateStore) this.harness.setStateStore(stateStore);
 		if (supervisor) this.harness.setSupervisor(supervisor);
+		// 门控共享实例：set_rule 工具的学习闭环与运行决策同一张规则表
+		this.harness.setGate(this.gate);
 	}
 
 	/** 重置对话历史（chat 模式 "/clear" 命令调用） */

@@ -1,4 +1,5 @@
-import { describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, test } from "bun:test";
+import { rmSync } from "node:fs";
 import {
 	defaultForLevel,
 	FlowGate,
@@ -6,7 +7,18 @@ import {
 	matchesTime,
 	normalizeDisposition,
 } from "../src/flow-gate";
+import { ToolExecutor } from "../src/tool-executor";
 import type { AgentEvent } from "../src/types";
+
+const RULES_FILE = ".relay/notify-rules.jsonl";
+
+afterAll(() => {
+	try {
+		rmSync(RULES_FILE, { force: true });
+	} catch {
+		/* ignore */
+	}
+});
 
 function ev(partial: Partial<AgentEvent>): AgentEvent {
 	return { type: "agent_done", threadId: "t", timestamp: 1, ...partial };
@@ -135,5 +147,65 @@ describe("intentToDisposition（服务进程的处置意图）", () => {
 		expect(intentToDisposition("immediate")).toBe("immediate");
 		expect(intentToDisposition("defer")).toBe("defer");
 		expect(intentToDisposition(undefined)).toBeUndefined();
+	});
+});
+
+describe("set_rule 工具（学习闭环：LLM 调规则）", () => {
+	test("LLM 降级某类事件为 defer：立即生效并沉淀", async () => {
+		const gate = new FlowGate();
+		const ex = new ToolExecutor();
+		ex.gate = gate;
+
+		const r = await ex.executeToolCall("set_rule", {
+			eventType: "opportunity.found",
+			action: "defer",
+		});
+		expect(r).toContain("已生效");
+		// 同一实例立即生效：notify 事件被规则降级为 defer
+		expect(
+			gate.decide(ev({ level: "notify", eventType: "opportunity.found" })),
+		).toBe("defer");
+	});
+
+	test("archive 被拒（彻底丢弃只能由用户设置）", async () => {
+		const ex = new ToolExecutor();
+		ex.gate = new FlowGate();
+		const r = await ex.executeToolCall("set_rule", {
+			eventType: "opportunity.found",
+			action: "archive",
+		});
+		expect(r).toContain("archive");
+		expect(r).toContain("用户");
+	});
+
+	test("未接入门控 → 提示不可用", async () => {
+		const ex = new ToolExecutor();
+		const r = await ex.executeToolCall("set_rule", {
+			eventType: "x",
+			action: "defer",
+		});
+		expect(r).toContain("不可用");
+	});
+
+	test("沉淀可跨重启读回（写 .relay/notify-rules.jsonl）", async () => {
+		const gate = new FlowGate();
+		const ex = new ToolExecutor();
+		ex.gate = gate;
+		await ex.executeToolCall("set_rule", {
+			eventType: "scan.done",
+			action: "notify",
+			agentRole: "demo-watcher",
+		});
+
+		const { loadNotifyRules } = await import("../src/notify-rules");
+		const rules = loadNotifyRules();
+		expect(
+			rules.some(
+				(r) =>
+					r.match.eventType === "scan.done" &&
+					r.match.agentRole === "demo-watcher" &&
+					r.action === "notify",
+			),
+		).toBe(true);
 	});
 });

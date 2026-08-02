@@ -272,6 +272,35 @@ const queryStateTool: ToolDefinition = {
 	},
 };
 
+/** set_rule 工具的 schema（学习闭环：LLM 通过对话调整门控处置规则） */
+const setRuleTool: ToolDefinition = {
+	type: "function",
+	function: {
+		name: "set_rule",
+		description:
+			"调整门控处置规则（学习闭环）：把某类事件的处置改为 immediate（立即唤醒我处理）/ defer（静默积攒后台）/ notify（推送用户）。修改立即生效并沉淀到 .relay/notify-rules.jsonl；archive（彻底丢弃）只能由用户设置。",
+		parameters: {
+			type: "object",
+			required: ["eventType", "action"],
+			properties: {
+				eventType: {
+					type: "string",
+					description: "事件类型，如 opportunity.found",
+				},
+				action: {
+					type: "string",
+					enum: ["immediate", "defer", "notify"],
+					description: "处置模式（archive 仅用户可设）",
+				},
+				agentRole: {
+					type: "string",
+					description: "（可选）限定服务 id，如 demo-watcher",
+				},
+			},
+		},
+	},
+};
+
 /** 所有可用的工具定义 */
 export const ALL_TOOLS: ToolDefinition[] = [
 	readTool,
@@ -281,6 +310,7 @@ export const ALL_TOOLS: ToolDefinition[] = [
 	dispatchTool,
 	queryStateTool,
 	createServiceTool,
+	setRuleTool,
 ];
 
 /** 根据工具名称执行（不走权限检查，直接调用） */

@@ -6,11 +6,11 @@
  */
 
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
-import type { GateRule } from "./flow-gate";
+import { type GateRule, normalizeDisposition } from "./flow-gate";
 
 const RULES_FILE = ".relay/notify-rules.jsonl";
 
-/** 读取全部沉淀规则（坏行忽略） */
+/** 读取全部沉淀规则（坏行忽略；旧值 show/digest/drop 归一化为新处置） */
 export function loadNotifyRules(): GateRule[] {
 	if (!existsSync(RULES_FILE)) return [];
 	const rules: GateRule[] = [];
@@ -18,7 +18,23 @@ export function loadNotifyRules(): GateRule[] {
 		const trimmed = line.trim();
 		if (!trimmed || trimmed.startsWith("#")) continue;
 		try {
-			rules.push(JSON.parse(trimmed) as GateRule);
+			const parsed = JSON.parse(trimmed) as {
+				match?: unknown;
+				action?: unknown;
+			};
+			// 旧值兼容：show→notify / digest→defer / drop→archive；无效处置整条忽略
+			const action =
+				typeof parsed.action === "string"
+					? normalizeDisposition(parsed.action)
+					: null;
+			if (
+				!action ||
+				typeof parsed.match !== "object" ||
+				parsed.match === null
+			) {
+				continue;
+			}
+			rules.push({ match: parsed.match as GateRule["match"], action });
 		} catch {
 			/* 坏规则忽略 */
 		}

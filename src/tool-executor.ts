@@ -2,7 +2,9 @@ import path from "node:path";
 import type { AgentRegistry } from "./agent-registry";
 import { loadApprovals } from "./approvals";
 import { dispatchAsync } from "./dispatcher";
+import type { GateRule } from "./flow-gate";
 import type { Inbox } from "./inbox";
+import { appendNotifyRule } from "./notify-rules";
 import type { ServiceContract, ServicePermissions } from "./service-contract";
 import { createServiceContract, writeServiceFiles } from "./service-factory";
 import type { StateStore } from "./state-store";
@@ -32,6 +34,8 @@ export class ToolExecutor {
 	supervisor?: Supervisor;
 	/** 服务 id（批准点确认流按服务隔离，Phase4-B） */
 	serviceId?: string;
+	/** 门控（set_rule 工具的学习闭环目标，与 orchestrator 共享同一实例） */
+	gate?: import("./flow-gate").FlowGate;
 
 	/** 注入服务契约权限（Supervisor/actor 启动时） */
 	setPermissions(p: ServicePermissions | null): void {
@@ -76,6 +80,30 @@ export class ToolExecutor {
 			const serviceId =
 				typeof args.serviceId === "string" ? args.serviceId : undefined;
 			return JSON.stringify(this.stateStore.queryState(serviceId), null, 2);
+		}
+
+		// set_rule：学习闭环——LLM 通过对话调整门控处置规则（archive 仅用户可设）
+		if (toolName === "set_rule") {
+			if (!this.gate) return "set_rule 不可用：FlowGate 未接入";
+			const eventType =
+				typeof args.eventType === "string" ? args.eventType.trim() : "";
+			const action = typeof args.action === "string" ? args.action : "";
+			// 权限分级：LLM 可设 immediate/defer/notify；archive（彻底丢弃）仅用户 rule 命令
+			const allowed = ["immediate", "defer", "notify"];
+			if (!eventType || !allowed.includes(action)) {
+				return `set_rule 需要 eventType + action ∈ ${allowed.join("/")}（archive 只能由用户设置: rule <type> archive）`;
+			}
+			const agentRole =
+				typeof args.agentRole === "string" && args.agentRole.trim()
+					? args.agentRole.trim()
+					: undefined;
+			const rule: GateRule = {
+				match: { eventType, ...(agentRole ? { agentRole } : {}) },
+				action: action as GateRule["action"],
+			};
+			this.gate.addRule(rule);
+			appendNotifyRule(rule);
+			return `[set_rule] 已生效: ${eventType} → ${action}（沉淀到 .relay/notify-rules.jsonl；用户可用 rule 命令撤销）`;
 		}
 
 		// dispatch 工具
