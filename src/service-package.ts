@@ -109,7 +109,7 @@ export function validatePackage(
 	}
 	const pkg = raw as RpkPackage;
 	const m = pkg.manifest;
-	if (!m || m.format !== "relay-package") {
+	if (m?.format !== "relay-package") {
 		errors.push("manifest.format 必须是 relay-package");
 	}
 	if (typeof m?.id !== "string" || !m.id) errors.push("manifest.id 必填");
